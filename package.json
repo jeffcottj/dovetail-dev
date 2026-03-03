@@ -1,0 +1,14 @@
+{
+  "name": "dovetail",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter './apps/*' --parallel dev",
+    "build": "pnpm --filter './packages/*' build && pnpm --filter './apps/*' build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
