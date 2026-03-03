@@ -1,2 +1,2 @@
-// Schema, connection, and migrations added in Phase 2.
-export {};
+export { db } from './connection.js';
+export * from './schema.js';
