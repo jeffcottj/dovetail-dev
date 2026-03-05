@@ -1,38 +1,58 @@
-import { DrizzleAdapter } from '@auth/drizzle-adapter';
 import NextAuth from 'next-auth';
-import EntraId from 'next-auth/providers/microsoft-entra-id';
-import Google from 'next-auth/providers/google';
-import { db } from '@dovetail/db';
-
-const provider = process.env.OAUTH_PROVIDER ?? 'google';
+import { eq } from 'drizzle-orm';
+import { db, users } from '@dovetail/db';
+import { authConfig } from './auth.config';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: DrizzleAdapter(db),
-  providers:
-    provider === 'entra'
-      ? [
-          EntraId({
-            clientId: process.env.ENTRA_CLIENT_ID!,
-            clientSecret: process.env.ENTRA_CLIENT_SECRET!,
-            tenantId: process.env.ENTRA_TENANT_ID!,
-          }),
-        ]
-      : [
-          Google({
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          }),
-        ],
+  ...authConfig,
   callbacks: {
-    session({ session, user }) {
-      // Attach role to session so the frontend and API can use it
-      session.user.role = (user as { role?: string }).role ?? 'viewer';
-      return session;
+    ...authConfig.callbacks,
+
+    async signIn({ user, account }) {
+      if (!user.email) return false;
+
+      const provider = account?.provider === 'microsoft-entra-id' ? 'entra' : 'google';
+      const providerId = account?.providerAccountId ?? '';
+
+      const [existing] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, user.email))
+        .limit(1);
+
+      if (!existing) {
+        await db.insert(users).values({
+          email: user.email,
+          name: user.name ?? user.email,
+          avatarUrl: user.image ?? null,
+          role: 'viewer',
+          provider,
+          providerId,
+        });
+      }
+
+      return true;
     },
-    jwt({ token, user }) {
-      if (user) token.role = (user as { role?: string }).role ?? 'viewer';
+
+    async jwt({ token, account }) {
+      // account is only present on first sign-in
+      if (account) {
+        const [dbUser] = await db
+          .select({ id: users.id, role: users.role })
+          .from(users)
+          .where(eq(users.email, token.email!))
+          .limit(1);
+        if (dbUser) {
+          token.userId = dbUser.id;
+          token.role = dbUser.role;
+        }
+      }
       return token;
     },
+
+    session({ session, token }) {
+      session.user.role = (token.role as string) ?? 'viewer';
+      return session;
+    },
   },
-  session: { strategy: 'jwt' },
 });

@@ -10,7 +10,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@auth/drizzle-adapter": "^1.11.1",
     "@dovetail/db": "workspace:*",
     "@dovetail/types": "workspace:*",
     "next": "^15.0.0",
