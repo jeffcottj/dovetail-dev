@@ -1,0 +1,200 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { eq, sql } from 'drizzle-orm';
+import { db, articles, articleVersions } from '@dovetail/db';
+import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
+import { requireRole } from '../middleware/requireRole.js';
+import { validateBody, validateQuery } from '../utils/validate.js';
+import { paginationSchema, paginate } from '../utils/pagination.js';
+import { toSlug } from '../utils/slug.js';
+import { resolveRole, hasMinimumRole } from '../services/permissions.js';
+import type { Role } from '@dovetail/types';
+
+export const articlesRouter = Router();
+
+const createArticleSchema = z.object({
+  title: z.string().min(1).max(500),
+  categoryId: z.string().uuid(),
+  content: z.record(z.unknown()).default({}),
+});
+
+const updateArticleSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  content: z.record(z.unknown()).optional(),
+  categoryId: z.string().uuid().optional(),
+});
+
+const listQuerySchema = paginationSchema.extend({
+  status: z.enum(['draft', 'published', 'archived']).optional(),
+  categoryId: z.string().uuid().optional(),
+});
+
+// GET /api/articles — paginated list
+articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (_req, res) => {
+  const { page, limit, status, categoryId } = res.locals.query as z.infer<typeof listQuerySchema>;
+  const offset = (page - 1) * limit;
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (status) conditions.push(eq(articles.status, status));
+  if (categoryId) conditions.push(eq(articles.categoryId, categoryId));
+
+  const whereClause = conditions.length > 0
+    ? sql`${sql.join(conditions, sql` AND `)}`
+    : undefined;
+
+  const [{ count: total }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(articles)
+    .where(whereClause);
+
+  const data = await db
+    .select()
+    .from(articles)
+    .where(whereClause)
+    .orderBy(sql`${articles.updatedAt} DESC`)
+    .limit(limit)
+    .offset(offset);
+
+  res.json(paginate(data, Number(total), { page, limit }));
+});
+
+// GET /api/articles/by-slug/:slug — must be before /:id to avoid matching "by-slug" as an id
+articlesRouter.get('/by-slug/:slug', authMiddleware, async (req, res) => {
+  const slug = req.params.slug as string;
+  const [article] = await db.select().from(articles).where(eq(articles.slug, slug));
+  if (!article) {
+    res.status(404).json({ error: 'Article not found' });
+    return;
+  }
+  res.json(article);
+});
+
+// GET /api/articles/:id
+articlesRouter.get('/:id', authMiddleware, async (req, res) => {
+  const id = req.params.id as string;
+  const [article] = await db.select().from(articles).where(eq(articles.id, id));
+  if (!article) {
+    res.status(404).json({ error: 'Article not found' });
+    return;
+  }
+  res.json(article);
+});
+
+// POST /api/articles — create draft
+articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(createArticleSchema), async (req: AuthRequest, res) => {
+  const { title, categoryId, content } = req.body;
+  const slug = toSlug(title);
+
+  try {
+    const [created] = await db.insert(articles).values({
+      title,
+      slug,
+      categoryId,
+      authorId: req.user!.id,
+      content,
+      status: 'draft',
+    }).returning();
+    res.status(201).json(created);
+  } catch (err: any) {
+    if (err.code === '23505' && err.constraint_name?.includes('slug')) {
+      const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
+      const [created] = await db.insert(articles).values({
+        title,
+        slug: uniqueSlug,
+        categoryId,
+        authorId: req.user!.id,
+        content,
+        status: 'draft',
+      }).returning();
+      res.status(201).json(created);
+    } else {
+      throw err;
+    }
+  }
+});
+
+// PATCH /api/articles/:id — update (creates version)
+articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody(updateArticleSchema), async (req: AuthRequest, res) => {
+  const id = req.params.id as string;
+
+  let result: any;
+  await db.transaction(async (tx) => {
+    // 1. Fetch current article
+    const [current] = await tx.select().from(articles).where(eq(articles.id, id));
+    if (!current) {
+      res.status(404).json({ error: 'Article not found' });
+      return;
+    }
+
+    // 2. Per-category RBAC check
+    const effectiveRole = await resolveRole(req.user!.id, current.categoryId, req.user!.role as Role);
+    if (!hasMinimumRole(effectiveRole, 'editor')) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    // 3. Compute next version number
+    const [maxVersion] = await tx
+      .select({ max: sql<number>`coalesce(max(version_number), 0)` })
+      .from(articleVersions)
+      .where(eq(articleVersions.articleId, id));
+    const nextVersion = (maxVersion?.max ?? 0) + 1;
+
+    // 4. Snapshot current content as a version
+    await tx.insert(articleVersions).values({
+      articleId: id,
+      title: current.title,
+      content: current.content,
+      authorId: req.user!.id,
+      versionNumber: nextVersion,
+    });
+
+    // 5. Apply updates
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (req.body.title !== undefined) {
+      updates.title = req.body.title;
+      updates.slug = toSlug(req.body.title);
+    }
+    if (req.body.content !== undefined) updates.content = req.body.content;
+    if (req.body.categoryId !== undefined) updates.categoryId = req.body.categoryId;
+
+    const [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+    result = updated;
+  });
+
+  if (!res.headersSent) {
+    res.json(result);
+  }
+});
+
+// DELETE /api/articles/:id — archive (soft delete)
+articlesRouter.delete('/:id', authMiddleware, requireRole('editor'), async (req, res) => {
+  const id = req.params.id as string;
+  const [archived] = await db
+    .update(articles)
+    .set({ status: 'archived', updatedAt: new Date() })
+    .where(eq(articles.id, id))
+    .returning();
+
+  if (!archived) {
+    res.status(404).json({ error: 'Article not found' });
+    return;
+  }
+  res.json(archived);
+});
+
+// POST /api/articles/:id/publish
+articlesRouter.post('/:id/publish', authMiddleware, requireRole('editor'), async (req, res) => {
+  const id = req.params.id as string;
+  const [published] = await db
+    .update(articles)
+    .set({ status: 'published', publishedAt: new Date(), updatedAt: new Date() })
+    .where(eq(articles.id, id))
+    .returning();
+
+  if (!published) {
+    res.status(404).json({ error: 'Article not found' });
+    return;
+  }
+  res.json(published);
+});
