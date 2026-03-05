@@ -8,7 +8,10 @@ import { authMiddleware, type AuthRequest } from './middleware/auth.js';
 export const app = express();
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: process.env.NEXTAUTH_URL ?? 'http://localhost:3000',
+  credentials: true,
+}));
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(cookieParser());
