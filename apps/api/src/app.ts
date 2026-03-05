@@ -1,6 +1,6 @@
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { authMiddleware, type AuthRequest } from './middleware/auth.js';
@@ -22,4 +22,12 @@ app.get('/health', (_req, res) => {
 
 app.get('/api/me', authMiddleware, (req: AuthRequest, res) => {
   res.json(req.user);
+});
+
+// --- Mount route files above this line ---
+
+// Global error handler — must be after all routes
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
 });
