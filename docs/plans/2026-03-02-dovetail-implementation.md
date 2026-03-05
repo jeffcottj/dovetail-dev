@@ -1295,6 +1295,231 @@ git commit -m "feat: add JWT auth middleware with /api/me endpoint"
 
 ---
 
+## Phase 3.9: Cross-Cutting Prerequisites
+
+> **Goal:** Establish patterns and utilities needed by all remaining phases. Must be completed before Phase 4.
+
+---
+
+### Task 3.9.1: Extract shared test token helper
+
+> **Why:** The JWE token helper (`makeToken`, `getDerivedKey`) in `apps/api/src/__tests__/middleware/auth.test.ts` is needed by every authenticated test in Phases 4–10. It's currently local to one test file.
+
+**Files:**
+- Create: `apps/api/src/__tests__/helpers/token.ts`
+- Edit: `apps/api/src/__tests__/middleware/auth.test.ts`
+
+**Step 1: Create `apps/api/src/__tests__/helpers/token.ts`**
+
+```typescript
+import { hkdf } from 'node:crypto';
+import { promisify } from 'node:util';
+import { EncryptJWT } from 'jose';
+
+const hkdfAsync = promisify(hkdf);
+
+export const TEST_SECRET = 'test-secret';
+export const COOKIE_NAME = 'authjs.session-token';
+
+async function getDerivedKey(secret: string, salt: string): Promise<Uint8Array> {
+  const buf = await hkdfAsync('sha256', secret, salt, `Auth.js Generated Encryption Key (${salt})`, 64);
+  return new Uint8Array(buf as ArrayBuffer);
+}
+
+export async function makeToken(payload: Record<string, unknown>) {
+  const key = await getDerivedKey(TEST_SECRET, COOKIE_NAME);
+  return new EncryptJWT({ ...payload })
+    .setProtectedHeader({ alg: 'dir', enc: 'A256CBC-HS512' })
+    .setExpirationTime('1h')
+    .encrypt(key);
+}
+```
+
+**Step 2: Refactor `apps/api/src/__tests__/middleware/auth.test.ts`**
+
+Remove the local `getDerivedKey`, `makeToken`, `TEST_SECRET`, and `COOKIE_NAME` definitions. Replace with:
+
+```typescript
+import supertest from 'supertest';
+import { describe, expect, it } from 'vitest';
+import { app } from '../../app.js';
+import { COOKIE_NAME, makeToken, TEST_SECRET } from '../helpers/token.js';
+```
+
+**Step 3: Run tests to verify refactor**
+
+```bash
+cd apps/api && pnpm test
+```
+
+---
+
+### Task 3.9.2: Add global error handler and route registration pattern
+
+> **Why:** Express 5 catches async errors but returns unhelpful responses without a global error handler. Route files need a consistent registration pattern.
+
+**Files:**
+- Edit: `apps/api/src/app.ts`
+
+**Step 1: Add global error handler to `app.ts`**
+
+Add at the end of `app.ts` (after all route registrations):
+
+```typescript
+import type { NextFunction, Request, Response } from 'express';
+
+// Global error handler — must be added after all routes
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+```
+
+**Route registration pattern (used by all subsequent phases):**
+
+Each route file must:
+1. Create an `express.Router()`
+2. Define routes on it
+3. Export the router
+
+Then in `app.ts`, import and mount it:
+
+```typescript
+import { categoriesRouter } from './routes/categories.js';
+app.use('/api/categories', categoriesRouter);
+```
+
+All route imports and `app.use()` calls go above the global error handler.
+
+---
+
+### Task 3.9.3: Install zod and create validation/pagination utilities
+
+> **Why:** Route handlers need input validation (zod) and all list endpoints need consistent pagination.
+
+**Files:**
+- Edit: `apps/api/package.json` (add zod dependency)
+- Create: `apps/api/src/utils/validate.ts`
+- Create: `apps/api/src/utils/pagination.ts`
+- Create: `apps/api/src/utils/slug.ts`
+
+**Step 1: Install zod**
+
+```bash
+pnpm --filter @dovetail/api add zod
+```
+
+**Step 2: Create `apps/api/src/utils/validate.ts`**
+
+```typescript
+import type { Request, Response, NextFunction } from 'express';
+import { type ZodSchema, ZodError } from 'zod';
+
+export function validateBody(schema: ZodSchema) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.body = schema.parse(req.body);
+      next();
+    } catch (err) {
+      if (err instanceof ZodError) {
+        res.status(400).json({ error: 'Validation error', details: err.errors });
+        return;
+      }
+      next(err);
+    }
+  };
+}
+
+export function validateQuery(schema: ZodSchema) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.query = schema.parse(req.query) as typeof req.query;
+      next();
+    } catch (err) {
+      if (err instanceof ZodError) {
+        res.status(400).json({ error: 'Validation error', details: err.errors });
+        return;
+      }
+      next(err);
+    }
+  };
+}
+```
+
+**Step 3: Create `apps/api/src/utils/pagination.ts`**
+
+Standard pagination pattern used by all list endpoints:
+- Query params: `?page=1&limit=20`
+- Response envelope: `{ data: T[], total: number, page: number, limit: number }`
+- Default limit: 20, max limit: 100
+
+```typescript
+import { z } from 'zod';
+
+export const paginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type PaginationParams = z.infer<typeof paginationSchema>;
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export function paginate<T>(data: T[], total: number, params: PaginationParams): PaginatedResponse<T> {
+  return { data, total, page: params.page, limit: params.limit };
+}
+```
+
+**Step 4: Create `apps/api/src/utils/slug.ts`**
+
+```typescript
+export function toSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+```
+
+**Step 5: Run tests and commit**
+
+```bash
+cd apps/api && pnpm test
+git add .
+git commit -m "feat: add cross-cutting prerequisites (test helper, error handler, validation, pagination, slug utils)"
+```
+
+---
+
+### Task 3.9.4: Test database strategy
+
+> **Why:** Tests that transitively import `@dovetail/db` will fail because `DATABASE_URL` is unset and the connection module throws at import time. Every test file needs a clear mocking strategy.
+
+**Strategy for all subsequent phases:**
+
+- **Service/middleware unit tests:** Use `vi.mock('@dovetail/db', ...)` factory mock (hoisted above imports, prevents the real module from loading). Use a **partial mock** that preserves schema exports:
+
+```typescript
+vi.mock('@dovetail/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dovetail/db')>();
+  return { ...actual, db: { execute: vi.fn(), select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(), transaction: vi.fn() } };
+});
+```
+
+This prevents the real `DATABASE_URL` check from running while preserving all schema exports (tables, enums, relations) needed by the code under test.
+
+- **Route integration tests (supertest):** Mock DB at the top of the test file using the same pattern. All database calls return mocked data.
+
+---
+
 ## Phase 4: RBAC
 
 > **Goal:** Role-based access control enforced in Express. Category-level overrides (with cascade to subcategories) resolve correctly.
@@ -1311,29 +1536,54 @@ git commit -m "feat: add JWT auth middleware with /api/me endpoint"
 
 **Step 1: Write the failing tests**
 
-```typescript
-import { describe, expect, it, vi } from 'vitest';
-import { resolveRole } from '../../services/permissions.js';
+Note: Use a partial mock so schema exports are preserved. The mock replaces only `db`, preventing the `DATABASE_URL` check from running.
 
-// Mock the db module
-vi.mock('@dovetail/db', () => ({
-  db: { execute: vi.fn() },
-}));
+```typescript
+import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
+
+// Partial mock — preserves schema exports, replaces only db
+vi.mock('@dovetail/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dovetail/db')>();
+  return { ...actual, db: { execute: vi.fn() } };
+});
+
+import { resolveRole, hasMinimumRole } from '../../services/permissions.js';
+import { db } from '@dovetail/db';
 
 describe('resolveRole', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('returns global role when no category override exists', async () => {
-    // set up mock to return no category rows
-    // assert resolveRole returns user's global role
+    (db.execute as Mock).mockResolvedValue([]);
+    const role = await resolveRole('user-1', 'cat-1', 'viewer');
+    expect(role).toBe('viewer');
   });
 
   it('returns category role when exact match exists', async () => {
-    // set up mock to return a category role row
-    // assert resolveRole returns that role
+    (db.execute as Mock).mockResolvedValue([{ role: 'editor' }]);
+    const role = await resolveRole('user-1', 'cat-1', 'viewer');
+    expect(role).toBe('editor');
   });
 
-  it('cascades from parent category', async () => {
-    // set up mock: no exact match, but parent has a role
-    // assert resolveRole returns parent's role
+  it('returns the most specific (deepest) category role', async () => {
+    // The SQL orders by depth ASC and LIMITs 1, so the first result is the deepest match
+    (db.execute as Mock).mockResolvedValue([{ role: 'admin' }]);
+    const role = await resolveRole('user-1', 'cat-child', 'viewer');
+    expect(role).toBe('admin');
+  });
+});
+
+describe('hasMinimumRole', () => {
+  it('viewer meets viewer requirement', () => {
+    expect(hasMinimumRole('viewer', 'viewer')).toBe(true);
+  });
+  it('viewer does not meet editor requirement', () => {
+    expect(hasMinimumRole('viewer', 'editor')).toBe(false);
+  });
+  it('admin meets editor requirement', () => {
+    expect(hasMinimumRole('admin', 'editor')).toBe(true);
   });
 });
 ```
@@ -1345,13 +1595,22 @@ import { db } from '@dovetail/db';
 import { sql } from 'drizzle-orm';
 import type { Role } from '@dovetail/types';
 
+const ROLE_HIERARCHY: Record<Role, number> = {
+  viewer: 0,
+  editor: 1,
+  admin: 2,
+};
+
+/**
+ * Resolve the effective role for a user in the context of a category.
+ * Walks up the category ancestor chain via recursive CTE.
+ * Most-specific (deepest) category role wins; falls back to global role.
+ */
 export async function resolveRole(
   userId: string,
   categoryId: string,
-  userGlobalRole: Role,
+  globalRole: Role,
 ): Promise<Role> {
-  // Recursive CTE: walks up the ancestor chain for the given category,
-  // then joins to user_category_roles to find the most specific override.
   const result = await db.execute(sql`
     WITH RECURSIVE ancestors AS (
       SELECT id, parent_id, 0 AS depth
@@ -1370,11 +1629,19 @@ export async function resolveRole(
     LIMIT 1
   `);
 
-  return (result[0]?.role as Role) ?? userGlobalRole;
+  if (result.length > 0) {
+    return result[0].role as Role;
+  }
+
+  return globalRole;
+}
+
+export function hasMinimumRole(userRole: Role, requiredRole: Role): boolean {
+  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole];
 }
 ```
 
-**Step 3: Implement tests fully and run**
+**Step 3: Run tests**
 
 ```bash
 cd apps/api && pnpm test
@@ -1393,13 +1660,62 @@ git commit -m "feat: add category-level RBAC permission resolution"
 
 ### Task 4.2: requireRole middleware
 
+> **Why:** Coarse-grained global-role gate for routes. Per-category RBAC is handled in route handlers by calling `resolveRole()` after fetching the resource (to know its `categoryId`).
+
 **Files:**
 - Create: `apps/api/src/middleware/requireRole.ts`
 - Create: `apps/api/src/__tests__/middleware/requireRole.test.ts`
 
 **Step 1: Write failing test**
 
-Test that a `viewer` hitting an `editor`-required route gets 403. Test that an `editor` gets through.
+Test the middleware in isolation (mock req/res/next):
+
+```typescript
+import { describe, expect, it, vi } from 'vitest';
+import type { Response } from 'express';
+import { requireRole } from '../../middleware/requireRole.js';
+import type { AuthRequest } from '../../middleware/auth.js';
+
+describe('requireRole', () => {
+  function callMiddleware(role: string, minimum: string) {
+    const req = { user: { id: 'u1', role } } as AuthRequest;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+    const next = vi.fn();
+    requireRole(minimum as any)(req, res, next);
+    return { req, res, next };
+  }
+
+  it('returns 403 for viewer on editor route', () => {
+    const { res, next } = callMiddleware('viewer', 'editor');
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('allows editor on editor route', () => {
+    const { next } = callMiddleware('editor', 'editor');
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('allows admin on editor route', () => {
+    const { next } = callMiddleware('admin', 'editor');
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('returns 403 when no user on request', () => {
+    const req = {} as AuthRequest;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+    const next = vi.fn();
+    requireRole('viewer')(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
+```
 
 **Step 2: Implement `requireRole.ts`**
 
@@ -1407,13 +1723,17 @@ Test that a `viewer` hitting an `editor`-required route gets 403. Test that an `
 import type { NextFunction, Response } from 'express';
 import type { Role } from '@dovetail/types';
 import type { AuthRequest } from './auth.js';
+import { hasMinimumRole } from '../services/permissions.js';
 
-const RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2 };
-
+/**
+ * Coarse-grained role gate based on the user's global role.
+ * For per-category RBAC, call resolveRole() in the route handler itself
+ * (after fetching the resource to know its categoryId).
+ */
 export function requireRole(minimum: Role) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    const userRole = (req.user?.role ?? 'viewer') as Role;
-    if (RANK[userRole] < RANK[minimum]) {
+    const userRole = req.user?.role as Role | undefined;
+    if (!userRole || !hasMinimumRole(userRole, minimum)) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
@@ -1426,7 +1746,7 @@ export function requireRole(minimum: Role) {
 
 ```bash
 cd apps/api && pnpm test
-git add apps/api/src/middleware/requireRole.ts apps/api/src/__tests__/
+git add apps/api/src/middleware/requireRole.ts apps/api/src/__tests__/middleware/requireRole.test.ts
 git commit -m "feat: add requireRole middleware"
 ```
 
@@ -1434,7 +1754,7 @@ git commit -m "feat: add requireRole middleware"
 
 ## Phase 5: Core API — Articles & Categories
 
-> **Goal:** Full CRUD for categories and articles. Every save creates a version row. Routes are protected by auth + role middleware.
+> **Goal:** Full CRUD for categories and articles. Every save creates a version row. Routes are protected by auth + role middleware. All route files follow the router pattern from Task 3.9.2.
 
 ---
 
@@ -1443,17 +1763,97 @@ git commit -m "feat: add requireRole middleware"
 **Files:**
 - Create: `apps/api/src/routes/categories.ts`
 - Create: `apps/api/src/__tests__/routes/categories.test.ts`
+- Edit: `apps/api/src/app.ts` (mount router)
 
 **Endpoints:**
 
 ```
-GET    /api/categories          → list all (tree structure), viewer+
+GET    /api/categories          → list all (flat array with parentId — frontend builds tree), viewer+
 POST   /api/categories          → create, editor+
 PATCH  /api/categories/:id      → update, editor+
-DELETE /api/categories/:id      → delete, admin only
+DELETE /api/categories/:id      → delete (409 if has children or articles), admin only
 ```
 
-Write failing tests first. Implement routes. Run tests. Commit.
+**Route file skeleton:**
+
+```typescript
+import { Router } from 'express';
+import { z } from 'zod';
+import { eq, sql } from 'drizzle-orm';
+import { db, categories, articles } from '@dovetail/db';
+import { authMiddleware } from '../middleware/auth.js';
+import { requireRole } from '../middleware/requireRole.js';
+import { validateBody } from '../utils/validate.js';
+import { toSlug } from '../utils/slug.js';
+
+export const categoriesRouter = Router();
+
+const createCategorySchema = z.object({
+  name: z.string().min(1).max(200),
+  parentId: z.string().uuid().nullable().optional(),
+});
+
+const updateCategorySchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  parentId: z.string().uuid().nullable().optional(),
+});
+
+categoriesRouter.get('/', authMiddleware, async (req, res) => {
+  const result = await db.select().from(categories);
+  res.json(result); // flat list — frontend builds tree from parentId
+});
+
+categoriesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(createCategorySchema), async (req, res) => {
+  const { name, parentId } = req.body;
+  const slug = toSlug(name);
+  // Handle slug collision: append random suffix on uniqueness violation
+  try {
+    const [created] = await db.insert(categories).values({ name, slug, parentId: parentId ?? null }).returning();
+    res.status(201).json(created);
+  } catch (err: any) {
+    if (err.code === '23505' && err.constraint_name?.includes('slug')) {
+      const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
+      const [created] = await db.insert(categories).values({ name, slug: uniqueSlug, parentId: parentId ?? null }).returning();
+      res.status(201).json(created);
+    } else {
+      throw err;
+    }
+  }
+});
+
+categoriesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  // Refuse to delete categories with children or articles (return 409)
+  const [childCount] = await db.select({ count: sql<number>`count(*)` }).from(categories).where(eq(categories.parentId, id));
+  if (childCount.count > 0) {
+    res.status(409).json({ error: 'Cannot delete category with subcategories. Move or delete them first.' });
+    return;
+  }
+  const [articleCount] = await db.select({ count: sql<number>`count(*)` }).from(articles).where(eq(articles.categoryId, id));
+  if (articleCount.count > 0) {
+    res.status(409).json({ error: 'Cannot delete category with articles. Move or delete them first.' });
+    return;
+  }
+  await db.delete(categories).where(eq(categories.id, id));
+  res.status(204).end();
+});
+```
+
+**Mount in `app.ts`:**
+
+```typescript
+import { categoriesRouter } from './routes/categories.js';
+app.use('/api/categories', categoriesRouter);
+// Keep global error handler LAST
+```
+
+**Slug generation:** Uses `utils/slug.ts`. On uniqueness violation (Postgres error code `23505`), retries with a timestamp suffix.
+
+**Deletion strategy:** Categories with children or articles cannot be deleted (returns 409 Conflict). Children/articles must be moved or deleted first.
+
+**Test pattern:** Use supertest with JWE tokens from the shared helper. Mock `@dovetail/db` using the partial mock pattern from Task 3.9.4.
+
+Write failing tests first. Implement routes. Mount router. Run tests. Commit.
 
 ---
 
@@ -1462,36 +1862,135 @@ Write failing tests first. Implement routes. Run tests. Commit.
 **Files:**
 - Create: `apps/api/src/routes/articles.ts`
 - Create: `apps/api/src/__tests__/routes/articles.test.ts`
+- Edit: `apps/api/src/app.ts` (mount router)
 
 **Endpoints:**
 
 ```
-GET    /api/articles               → list (filter by status, category), viewer+
+GET    /api/articles               → list (filter by status, category, pagination), viewer+
 GET    /api/articles/:id           → get one, viewer+
+GET    /api/articles/by-slug/:slug → get by slug (for frontend routing), viewer+
 POST   /api/articles               → create draft, editor+
 PATCH  /api/articles/:id           → update (creates version), editor of category+
-DELETE /api/articles/:id           → archive (soft delete), editor+
+DELETE /api/articles/:id           → archive (sets status to 'archived'), editor+
 POST   /api/articles/:id/publish   → publish, editor+
 ```
 
-**Important:** Every `PATCH` must:
-1. Fetch the current article
-2. Insert a row into `article_versions` with the current content
-3. Increment `version_number`
-4. Apply the update to `articles`
+**Important: Versioning requires a database transaction.**
 
-Write failing tests. Implement. Run. Commit.
+Concurrent updates could produce duplicate version numbers. Use Drizzle transactions:
+
+```typescript
+import { db, articles, articleVersions } from '@dovetail/db';
+import { eq, sql } from 'drizzle-orm';
+
+// PATCH /api/articles/:id handler:
+await db.transaction(async (tx) => {
+  // 1. Fetch current article
+  const [current] = await tx.select().from(articles).where(eq(articles.id, id));
+  if (!current) { res.status(404).json({ error: 'Article not found' }); return; }
+
+  // 2. Compute next version number from article_versions (not from articles table — articles has no versionNumber column)
+  const [maxVersion] = await tx
+    .select({ max: sql<number>`coalesce(max(version_number), 0)` })
+    .from(articleVersions)
+    .where(eq(articleVersions.articleId, id));
+  const nextVersion = (maxVersion?.max ?? 0) + 1;
+
+  // 3. Insert version row with the CURRENT content (before update)
+  await tx.insert(articleVersions).values({
+    articleId: id,
+    title: current.title,
+    content: current.content,
+    authorId: req.user!.id,
+    versionNumber: nextVersion,
+  });
+
+  // 4. Apply update to articles — must explicitly set updatedAt (defaultNow only applies on INSERT)
+  await tx.update(articles)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(eq(articles.id, id));
+});
+```
+
+**Per-category RBAC check:**
+
+PATCH requires "editor of category+". The handler must call `resolveRole()` after fetching the article:
+
+```typescript
+import { resolveRole, hasMinimumRole } from '../services/permissions.js';
+
+// Inside PATCH handler, after fetching current article:
+const effectiveRole = await resolveRole(req.user!.id, current.categoryId, req.user!.role as Role);
+if (!hasMinimumRole(effectiveRole, 'editor')) {
+  res.status(403).json({ error: 'Forbidden' });
+  return;
+}
+```
+
+**`updatedAt` note:** The schema has `updatedAt: timestamp('updated_at').notNull().defaultNow()` — this only sets the default on INSERT. The PATCH handler must explicitly set `updatedAt: new Date()`.
+
+**Archive semantics:** `DELETE /api/articles/:id` sets `status: 'archived'` (soft delete) and returns 200 with the archived article. It does NOT return 204 or physically delete the row.
+
+**Slug-based lookup:** `GET /api/articles/by-slug/:slug` enables frontend routing by slug while the API primarily uses IDs.
+
+Write failing tests (mock DB, use JWE tokens from shared helper). Implement. Mount router in `app.ts`. Run tests. Commit.
 
 ---
 
 ### Task 5.3: Version history routes
 
+**Files:**
+- Create: `apps/api/src/routes/versions.ts` (or add to `articles.ts`)
+- Create: `apps/api/src/__tests__/routes/versions.test.ts`
+
 **Endpoints:**
 
 ```
-GET  /api/articles/:id/versions              → list versions
-GET  /api/articles/:id/versions/:versionId   → get snapshot
-POST /api/articles/:id/versions/:versionId/restore → restore (creates new version)
+GET  /api/articles/:id/versions              → list versions (paginated), viewer+
+GET  /api/articles/:id/versions/:versionId   → get version snapshot, viewer+
+POST /api/articles/:id/versions/:versionId/restore → restore old version, editor+
+```
+
+**Restore logic (requires a transaction):**
+
+Restoring a version means: take the old version's content, create a NEW version row (snapshot of current content), then overwrite the article with the old content.
+
+```typescript
+// POST /api/articles/:id/versions/:versionId/restore
+await db.transaction(async (tx) => {
+  // 1. Fetch the old version to restore
+  const [oldVersion] = await tx.select().from(articleVersions)
+    .where(eq(articleVersions.id, versionId));
+  if (!oldVersion) { res.status(404).json({ error: 'Version not found' }); return; }
+
+  // 2. Fetch current article content
+  const [current] = await tx.select().from(articles).where(eq(articles.id, articleId));
+  if (!current) { res.status(404).json({ error: 'Article not found' }); return; }
+
+  // 3. Compute next version number
+  const [maxVersion] = await tx
+    .select({ max: sql<number>`coalesce(max(version_number), 0)` })
+    .from(articleVersions)
+    .where(eq(articleVersions.articleId, articleId));
+  const nextVersion = (maxVersion?.max ?? 0) + 1;
+
+  // 4. Save current content as a new version
+  await tx.insert(articleVersions).values({
+    articleId,
+    title: current.title,
+    content: current.content,
+    authorId: req.user!.id,
+    versionNumber: nextVersion,
+  });
+
+  // 5. Overwrite article with old version's content
+  await tx.update(articles).set({
+    title: oldVersion.title,
+    content: oldVersion.content,
+    updatedAt: new Date(),
+  }).where(eq(articles.id, articleId));
+});
 ```
 
 Write failing tests. Implement. Run. Commit.
@@ -1504,41 +2003,241 @@ Write failing tests. Implement. Run. Commit.
 
 ---
 
-### Task 6.1: Category tree sidebar
+### Task 6.0: Frontend prerequisites
 
-**File:** `apps/web/components/Sidebar.tsx`
+> **Why:** Several infrastructure pieces must be in place before building UI components: API client with cookie forwarding, session provider for role-aware UI, and a styling solution.
 
-Fetches `/api/categories`, renders a collapsible tree using recursive components. Links navigate to `/categories/[slug]`.
+**Files:**
+- Create: `apps/web/lib/api.ts`
+- Create: `apps/web/app/providers.tsx`
+- Edit: `apps/web/app/layout.tsx`
+- Edit: `apps/web/package.json` (add dependencies)
+
+**Step 1: Install Tailwind CSS**
+
+```bash
+cd apps/web && pnpm add -D tailwindcss @tailwindcss/postcss postcss
+```
+
+Create `apps/web/postcss.config.mjs`:
+```javascript
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+export default config;
+```
+
+Create `apps/web/app/globals.css`:
+```css
+@import "tailwindcss";
+```
+
+Import `globals.css` in `layout.tsx`.
+
+**Step 2: Create API client with cookie forwarding**
+
+Server components cannot access browser cookies directly. Use `cookies()` from `next/headers`:
+
+```typescript
+// apps/web/lib/api.ts
+import { cookies } from 'next/headers';
+
+const API_URL = process.env.API_URL ?? 'http://localhost:3001';
+
+export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('authjs.session-token')?.value;
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      ...init?.headers,
+      ...(token ? { Cookie: `authjs.session-token=${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+```
+
+**Note:** This `apiFetch` is for **server components only** (uses `next/headers`). For **client components** (e.g., the editor), use plain `fetch` with `credentials: 'include'` — the browser will send the cookie automatically.
+
+Create a client-side API helper:
+
+```typescript
+// apps/web/lib/api-client.ts
+'use client';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+export async function apiClientFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...init?.headers,
+    },
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<T>;
+}
+```
+
+**Step 3: Add SessionProvider for role-aware client UI**
+
+`useSession()` requires `<SessionProvider>` in the component tree.
+
+```typescript
+// apps/web/app/providers.tsx
+'use client';
+
+import { SessionProvider } from 'next-auth/react';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return <SessionProvider>{children}</SessionProvider>;
+}
+```
+
+**Step 4: Update layout.tsx**
+
+```tsx
+// apps/web/app/layout.tsx
+import './globals.css';
+import { Providers } from './providers';
+
+export const metadata = {
+  title: 'Dovetail',
+  description: 'Legal knowledge base',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+```
+
+**Step 5: Add `NEXT_PUBLIC_API_URL` and `API_URL` to `.env.example`**
+
+```
+API_URL=http://localhost:3001          # server-side API calls
+NEXT_PUBLIC_API_URL=http://localhost:3001  # client-side API calls
+```
+
+Commit.
+
+---
+
+### Task 6.1: Category tree sidebar and page layout
+
+**Files:**
+- Create: `apps/web/components/Sidebar.tsx`
+- Create: `apps/web/app/(main)/layout.tsx`
+
+The `(main)` route group wraps all authenticated pages with a sidebar + main content area layout.
+
+```tsx
+// apps/web/app/(main)/layout.tsx
+import { Sidebar } from '../../components/Sidebar';
+
+export default function MainLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <main className="flex-1 p-6">{children}</main>
+    </div>
+  );
+}
+```
+
+`Sidebar.tsx` fetches `/api/categories` via `apiFetch` (server component), renders a collapsible tree using recursive components. Links navigate to `/categories/[slug]`.
+
+Add `loading.tsx` in the `(main)` route group for a loading skeleton.
+
+---
 
 ### Task 6.2: Article list page
 
-**File:** `apps/web/app/categories/[slug]/page.tsx`
+**Files:**
+- Create: `apps/web/app/(main)/categories/[slug]/page.tsx`
+- Create: `apps/web/app/(main)/categories/[slug]/loading.tsx`
+- Create: `apps/web/app/(main)/categories/[slug]/error.tsx`
 
-Server component. Fetches articles in that category from the API. Lists titles, author, updated date, status badge.
+Server component. Uses `apiFetch` to fetch articles in that category. Lists titles, author, updated date, status badge.
+
+---
 
 ### Task 6.3: Article view page
 
-**File:** `apps/web/app/articles/[slug]/page.tsx`
+**Files:**
+- Create: `apps/web/app/(main)/articles/[slug]/page.tsx`
+- Create: `apps/web/app/(main)/articles/[slug]/loading.tsx`
+- Create: `apps/web/app/(main)/articles/[slug]/error.tsx`
 
-Renders article content (Tiptap JSON → HTML). Shows metadata. Editor+ sees "Edit" button.
+Uses `apiFetch` to fetch article by slug via `GET /api/articles/by-slug/:slug`.
+
+**Rendering Tiptap JSON:** Use a read-only Tiptap editor instance as a **client component**:
+
+```tsx
+// apps/web/components/ArticleContent.tsx
+'use client';
+
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+
+export function ArticleContent({ content }: { content: unknown }) {
+  const editor = useEditor({
+    extensions: [StarterKit],
+    content: content as any,
+    editable: false,
+  });
+  return <EditorContent editor={editor} />;
+}
+```
+
+Shows metadata. Uses `useSession()` to check role — editor+ sees "Edit" button.
+
+---
 
 ### Task 6.4: Article editor
 
-**File:** `apps/web/app/articles/[slug]/edit/page.tsx`
+**Files:**
+- Create: `apps/web/app/(main)/articles/[slug]/edit/page.tsx`
+- Create: `apps/web/components/ArticleEditor.tsx`
 
-Install Tiptap:
+**Step 1: Install Tiptap**
 
 ```bash
-cd apps/web && pnpm add @tiptap/react @tiptap/starter-kit
+cd apps/web && pnpm add @tiptap/react @tiptap/starter-kit @tiptap/pm
 ```
 
-Rich text editor component. Save button calls `PATCH /api/articles/:id`. Publish button calls `POST /api/articles/:id/publish`.
+**Step 2: Build editor component**
+
+Client component using `useEditor` with `editable: true`. Uses `apiClientFetch` (client-side) for save/publish.
+
+Save button calls `PATCH /api/articles/:id` with `credentials: 'include'`.
+Publish button calls `POST /api/articles/:id/publish`.
+
+---
 
 ### Task 6.5: Version history page
 
-**File:** `apps/web/app/articles/[slug]/history/page.tsx`
+**Files:**
+- Create: `apps/web/app/(main)/articles/[slug]/history/page.tsx`
+- Create: `apps/web/app/(main)/articles/[slug]/history/loading.tsx`
 
-Lists versions. Links to version snapshot view. Admin/editor can restore.
+Lists versions fetched via `apiFetch`. Links to version snapshot view. Editor+ can restore (calls `POST /api/articles/:id/versions/:versionId/restore`).
 
 ---
 
@@ -1548,45 +2247,181 @@ Lists versions. Links to version snapshot view. Admin/editor can restore.
 
 ---
 
-### Task 7.1: Add tsvector column and trigger via migration
+### Task 7.1: Add tsvector trigger and GIN index via migration
 
-> **Why:** A `tsvector` is a preprocessed, indexed version of text that Postgres can search extremely fast. The trigger keeps it in sync automatically — you never have to remember to update it.
+> **Why:** A `tsvector` is a preprocessed, indexed version of text that Postgres can search extremely fast. The trigger keeps it in sync automatically.
 
-**Step 1: Create a new Drizzle migration**
+**Critical note:** The article `content` column is JSONB (Tiptap format). Casting JSONB to text with `content::text` produces raw JSON structure, not readable text. A generated column approach will produce garbage search indexes.
 
-Add raw SQL to a new migration file (Drizzle allows custom SQL migrations):
+**Solution:** Use a PL/pgSQL trigger function that extracts text from Tiptap JSON, plus a `plain_text` column that caches extracted text.
 
-```sql
--- Add search_vector column with proper type
-ALTER TABLE articles ADD COLUMN search_vector_ts tsvector
-  GENERATED ALWAYS AS (
-    to_tsvector('english', coalesce(title, '') || ' ' || coalesce(content::text, ''))
-  ) STORED;
+**Files:**
+- Create: `packages/db/migrations/NNNN_add_search_trigger.sql` (manual migration)
+- Edit: `packages/db/src/schema.ts` (update `searchVector` column type, add `plainText`)
+- Edit: `packages/db/migrations/meta/_journal.json` (register the manual migration)
 
-CREATE INDEX articles_search_idx ON articles USING GIN(search_vector_ts);
+**Step 1: Update Drizzle schema**
+
+In `packages/db/src/schema.ts`, change the `articles` table:
+- Remove `searchVector: text('search_vector')` (the text placeholder)
+- Add `plainText: text('plain_text')` — application-populated on save, contains extracted text from Tiptap JSON
+
+The `search_vector` tsvector column will be managed by Postgres trigger and should NOT be in the Drizzle schema (it's a generated column the app never reads/writes directly).
+
+**Step 2: Create a Tiptap text extraction utility**
+
+```typescript
+// apps/api/src/utils/tiptap.ts
+
+/**
+ * Recursively extracts plain text from Tiptap JSON content.
+ * Walks the node tree and concatenates all text node values.
+ */
+export function extractText(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const n = node as Record<string, unknown>;
+
+  if (n.type === 'text' && typeof n.text === 'string') {
+    return n.text;
+  }
+
+  if (Array.isArray(n.content)) {
+    return n.content.map(extractText).join(' ');
+  }
+
+  return '';
+}
 ```
 
-**Step 2: Apply migration**
+This utility is also used in Phase 8 (embedding pipeline).
+
+**Step 3: Update article save handlers (PATCH and POST)**
+
+After saving an article, compute and store `plain_text`:
+
+```typescript
+import { extractText } from '../utils/tiptap.js';
+
+// In the PATCH handler, after updating the article:
+const plainText = extractText(updates.content ?? current.content);
+await tx.update(articles).set({ plainText }).where(eq(articles.id, id));
+```
+
+**Step 4: Create manual SQL migration**
+
+Create `packages/db/migrations/NNNN_add_search_trigger.sql`:
+
+```sql
+-- Add plain_text column for extracted article text
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS plain_text text;
+
+-- Drop the old search_vector text column and recreate as tsvector
+ALTER TABLE articles DROP COLUMN IF EXISTS search_vector;
+
+-- Add tsvector column managed by trigger
+ALTER TABLE articles ADD COLUMN search_vector tsvector;
+
+-- Create trigger function to update search_vector from title + plain_text
+CREATE OR REPLACE FUNCTION articles_search_vector_update() RETURNS trigger AS $$
+BEGIN
+  NEW.search_vector := to_tsvector('english',
+    coalesce(NEW.title, '') || ' ' || coalesce(NEW.plain_text, '')
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER articles_search_vector_trigger
+  BEFORE INSERT OR UPDATE OF title, plain_text ON articles
+  FOR EACH ROW EXECUTE FUNCTION articles_search_vector_update();
+
+-- GIN index for fast full-text search
+CREATE INDEX IF NOT EXISTS articles_search_idx ON articles USING GIN(search_vector);
+```
+
+**Step 5: Register in journal**
+
+Add an entry to `packages/db/migrations/meta/_journal.json` following the pattern of existing entries (increment the index, use the migration filename without `.sql`).
+
+**Step 6: Apply migration**
 
 ```bash
 cd packages/db && DATABASE_URL=... pnpm db:migrate
 ```
 
+---
+
 ### Task 7.2: Search endpoint
 
-**File:** `apps/api/src/routes/search.ts`
+**Files:**
+- Create: `apps/api/src/routes/search.ts`
+- Create: `apps/api/src/__tests__/routes/search.test.ts`
+- Edit: `apps/api/src/app.ts` (mount router)
 
 ```
-GET /api/search?q=...&categoryId=...&authorId=...&from=...&to=...&tags=...
+GET /api/search?q=...&categoryId=...&authorId=...&from=...&to=...&tags=...&page=1&limit=20
 ```
 
-Uses `to_tsquery` + `ts_rank` for relevance-ranked results. All filters are additive WHERE clauses.
+**Critical:** Use `websearch_to_tsquery` (NOT `to_tsquery`). `to_tsquery` requires pre-formatted boolean syntax (`word1 & word2`). `websearch_to_tsquery` accepts natural language queries with quotes and `-` for exclusion.
 
-Write failing test. Implement. Run. Commit.
+**Dynamic WHERE clause building with Drizzle:**
+
+```typescript
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
+
+const conditions = [];
+
+if (q) {
+  conditions.push(sql`search_vector @@ websearch_to_tsquery('english', ${q})`);
+}
+if (categoryId) {
+  conditions.push(eq(articles.categoryId, categoryId));
+}
+if (authorId) {
+  conditions.push(eq(articles.authorId, authorId));
+}
+if (from) {
+  conditions.push(gte(articles.createdAt, new Date(from)));
+}
+if (to) {
+  conditions.push(lte(articles.createdAt, new Date(to)));
+}
+
+// Only show published articles in search
+conditions.push(eq(articles.status, 'published'));
+
+const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+const results = await db
+  .select({
+    id: articles.id,
+    title: articles.title,
+    slug: articles.slug,
+    categoryId: articles.categoryId,
+    authorId: articles.authorId,
+    status: articles.status,
+    createdAt: articles.createdAt,
+    updatedAt: articles.updatedAt,
+    rank: q ? sql<number>`ts_rank(search_vector, websearch_to_tsquery('english', ${q}))` : sql<number>`1`,
+  })
+  .from(articles)
+  .where(whereClause)
+  .orderBy(q ? sql`ts_rank(search_vector, websearch_to_tsquery('english', ${q})) DESC` : articles.updatedAt)
+  .limit(limit)
+  .offset((page - 1) * limit);
+```
+
+Write failing test. Implement. Mount at `app.use('/api/search', searchRouter)`. Run. Commit.
+
+---
 
 ### Task 7.3: Search UI
 
-Search bar in navigation. Results page at `/search?q=...` with filter sidebar.
+**Files:**
+- Create: `apps/web/app/(main)/search/page.tsx`
+- Create: `apps/web/components/SearchBar.tsx`
+
+Search bar in navigation (add to the `(main)` layout). Results page at `/search?q=...` with filter sidebar (category, author, date range).
 
 ---
 
@@ -1598,15 +2433,19 @@ Search bar in navigation. Results page at `/search?q=...` with filter sidebar.
 
 ### Task 8.1: Embedding service
 
-**File:** `apps/api/src/services/embeddings.ts`
+**Files:**
+- Create: `apps/api/src/services/embeddings.ts`
+- Create: `apps/api/src/__tests__/services/embeddings.test.ts`
+
+**Interface and factory:**
 
 ```typescript
-interface EmbeddingProvider {
+export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
   embedMany(texts: string[]): Promise<number[][]>;
 }
 
-function createEmbeddingProvider(): EmbeddingProvider {
+export function createEmbeddingProvider(): EmbeddingProvider {
   const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
   if (provider === 'openai') return new OpenAIEmbeddingProvider();
   if (provider === 'ollama') return new OllamaEmbeddingProvider();
@@ -1614,20 +2453,177 @@ function createEmbeddingProvider(): EmbeddingProvider {
 }
 ```
 
+**OpenAI implementation:**
+
+```typescript
+class OpenAIEmbeddingProvider implements EmbeddingProvider {
+  private apiKey = process.env.OPENAI_API_KEY!;
+  private model = process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small';
+  private baseUrl = process.env.EMBEDDING_BASE_URL ?? 'https://api.openai.com/v1';
+
+  async embed(text: string): Promise<number[]> {
+    const results = await this.embedMany([text]);
+    return results[0];
+  }
+
+  async embedMany(texts: string[]): Promise<number[][]> {
+    const res = await fetch(`${this.baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({ model: this.model, input: texts }),
+    });
+    if (!res.ok) throw new Error(`OpenAI API error: ${res.status}`);
+    const json = await res.json();
+    return json.data.map((d: { embedding: number[] }) => d.embedding);
+  }
+}
+```
+
+**Ollama implementation:**
+
+```typescript
+class OllamaEmbeddingProvider implements EmbeddingProvider {
+  private model = process.env.EMBEDDING_MODEL ?? 'nomic-embed-text';
+  private baseUrl = process.env.EMBEDDING_BASE_URL ?? 'http://localhost:11434';
+
+  async embed(text: string): Promise<number[]> {
+    const res = await fetch(`${this.baseUrl}/api/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: this.model, input: text }),
+    });
+    if (!res.ok) throw new Error(`Ollama API error: ${res.status}`);
+    const json = await res.json();
+    return json.embeddings[0];
+  }
+
+  async embedMany(texts: string[]): Promise<number[][]> {
+    // Ollama doesn't support batch embedding natively — call one at a time
+    return Promise.all(texts.map((t) => this.embed(t)));
+  }
+}
+```
+
+---
+
 ### Task 8.2: Embedding pipeline
 
-On article save/update:
-1. Extract plain text from article content JSON
-2. Split into ~512-token overlapping chunks
-3. Embed each chunk
-4. Delete old `article_embeddings` rows for this article
-5. Insert new rows
+**Files:**
+- Create: `apps/api/src/services/embedding-pipeline.ts`
 
-Run as async background work (don't block the HTTP response).
+**Text extraction:** Use `extractText()` from `apps/api/src/utils/tiptap.ts` (created in Phase 7).
 
-### Task 8.3: Semantic search
+**Chunking algorithm:** Simple character-based chunker (~2000 chars per chunk, 200 char overlap):
 
-Add `mode=semantic|fulltext|hybrid` param to `GET /api/search`. In hybrid mode, fetch top-K from both, merge, re-rank by combined score.
+```typescript
+export function chunkText(text: string, maxChars = 2000, overlap = 200): string[] {
+  if (text.length <= maxChars) return [text];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    const end = Math.min(start + maxChars, text.length);
+    chunks.push(text.slice(start, end));
+    start = end - overlap;
+    if (start + overlap >= text.length) break;
+  }
+  return chunks;
+}
+```
+
+**Pipeline function:**
+
+```typescript
+import { eq } from 'drizzle-orm';
+import { db, articleEmbeddings, articles } from '@dovetail/db';
+import { createEmbeddingProvider } from './embeddings.js';
+import { extractText } from '../utils/tiptap.js';
+import { chunkText } from './embedding-pipeline.js';
+
+export async function generateEmbeddings(articleId: string): Promise<void> {
+  const [article] = await db.select().from(articles).where(eq(articles.id, articleId));
+  if (!article) return;
+
+  const text = extractText(article.content);
+  if (!text.trim()) return;
+
+  const chunks = chunkText(text);
+  const provider = createEmbeddingProvider();
+  const embeddings = await provider.embedMany(chunks);
+
+  // Delete old embeddings and insert new ones in a transaction
+  await db.transaction(async (tx) => {
+    await tx.delete(articleEmbeddings).where(eq(articleEmbeddings.articleId, articleId));
+    await tx.insert(articleEmbeddings).values(
+      chunks.map((chunk, i) => ({
+        articleId,
+        chunkIndex: i,
+        chunkText: chunk,
+        embedding: embeddings[i],
+      })),
+    );
+  });
+}
+```
+
+**Async invocation (fire-and-forget):**
+
+In article PATCH/POST handlers, after the response:
+
+```typescript
+// Don't block the HTTP response — run in background with error logging
+void generateEmbeddings(articleId).catch(err =>
+  console.error('Embedding generation failed:', err)
+);
+```
+
+---
+
+### Task 8.3: Hybrid search
+
+**Files:**
+- Edit: `apps/api/src/routes/search.ts` (add `mode` parameter)
+
+Add `mode=semantic|fulltext|hybrid` query param to `GET /api/search`.
+
+**pgvector query pattern:**
+
+```sql
+SELECT ae.article_id, ae.chunk_text,
+       1 - (ae.embedding <=> $1::vector) AS similarity
+FROM article_embeddings ae
+JOIN articles a ON a.id = ae.article_id
+WHERE a.status = 'published'
+ORDER BY ae.embedding <=> $1::vector
+LIMIT $2
+```
+
+**Hybrid merge with Reciprocal Rank Fusion (RRF):**
+
+```typescript
+function reciprocalRankFusion(
+  fulltextResults: { id: string }[],
+  semanticResults: { id: string }[],
+  k = 60,
+): string[] {
+  const scores = new Map<string, number>();
+
+  fulltextResults.forEach((r, rank) => {
+    scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + rank + 1));
+  });
+  semanticResults.forEach((r, rank) => {
+    scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + rank + 1));
+  });
+
+  return [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id);
+}
+```
+
+In hybrid mode: run full-text and semantic searches in parallel, merge with RRF, return re-ranked results.
 
 ---
 
@@ -1637,13 +2633,110 @@ Add `mode=semantic|fulltext|hybrid` param to `GET /api/search`. In hybrid mode, 
 
 ---
 
-### Task 9.1: API keys table and management
+### Task 9.1: API keys table, schema, and management endpoints
 
-**Migration:** Add `api_keys` table (id, name, key_hash, created_by, created_at, last_used_at, revoked_at).
+**Files:**
+- Edit: `packages/db/src/schema.ts` (add `apiKeys` table)
+- Create: migration file
+- Create: `apps/api/src/middleware/apiKeyAuth.ts`
+- Create: `apps/api/src/routes/admin/api-keys.ts`
+- Create: `apps/api/src/__tests__/routes/admin/api-keys.test.ts`
+- Edit: `apps/api/src/app.ts` (mount admin routes)
 
-**Admin UI:** Create/list/revoke API keys. Keys are shown once on creation (store only the hash).
+**Step 1: Add `apiKeys` table to Drizzle schema**
+
+```typescript
+// In packages/db/src/schema.ts
+export const apiKeys = pgTable('api_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  keyHash: text('key_hash').notNull().unique(),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at'),
+  revokedAt: timestamp('revoked_at'),
+});
+```
+
+**Step 2: Generate and apply migration**
+
+```bash
+cd packages/db && pnpm db:generate && DATABASE_URL=... pnpm db:migrate
+```
+
+**Step 3: Key generation and hashing**
+
+Use SHA-256 for hashing (API keys are high-entropy random strings, bcrypt is unnecessary):
+
+```typescript
+import { createHash, randomBytes } from 'node:crypto';
+
+function generateApiKey(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+function hashApiKey(key: string): string {
+  return createHash('sha256').update(key).digest('hex');
+}
+```
+
+**Step 4: Create API key auth middleware**
+
+> **Critical:** The existing auth middleware treats ALL `Authorization: Bearer <token>` values as JWE tokens and tries to decrypt them. A raw API key will fail decryption, returning 401. The RAG endpoint needs a **separate** auth middleware.
+
+```typescript
+// apps/api/src/middleware/apiKeyAuth.ts
+import { createHash } from 'node:crypto';
+import type { Request, Response, NextFunction } from 'express';
+import { eq, isNull } from 'drizzle-orm';
+import { db, apiKeys } from '@dovetail/db';
+
+export async function apiKeyAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Missing API key' });
+    return;
+  }
+
+  const rawKey = authHeader.slice(7);
+  const keyHash = createHash('sha256').update(rawKey).digest('hex');
+
+  const [key] = await db
+    .select()
+    .from(apiKeys)
+    .where(eq(apiKeys.keyHash, keyHash))
+    .limit(1);
+
+  if (!key || key.revokedAt) {
+    res.status(401).json({ error: 'Invalid or revoked API key' });
+    return;
+  }
+
+  // Update last_used_at (fire-and-forget)
+  void db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, key.id));
+
+  next();
+}
+```
+
+**Step 5: Admin CRUD endpoints for key management**
+
+```
+POST   /api/admin/api-keys      → create (returns raw key once), admin only
+GET    /api/admin/api-keys      → list (shows name, created, last used, status), admin only
+DELETE /api/admin/api-keys/:id  → revoke (sets revokedAt), admin only
+```
+
+Mount: `app.use('/api/admin/api-keys', apiKeysRouter)`
+
+---
 
 ### Task 9.2: RAG search endpoint
+
+**Files:**
+- Create: `apps/api/src/routes/rag.ts`
+- Create: `apps/api/src/__tests__/routes/rag.test.ts`
+- Edit: `apps/api/src/app.ts` (mount router)
 
 ```
 POST /api/v1/rag/search
@@ -1651,6 +2744,23 @@ Authorization: Bearer <api-key>
 
 { "query": "...", "limit": 5, "categoryIds": ["..."] }
 ```
+
+**Uses `apiKeyAuth` middleware** (NOT `authMiddleware`):
+
+```typescript
+import { Router } from 'express';
+import { apiKeyAuth } from '../middleware/apiKeyAuth.js';
+
+export const ragRouter = Router();
+ragRouter.post('/search', apiKeyAuth, async (req, res) => {
+  // 1. Validate input
+  // 2. Embed the query
+  // 3. Search article_embeddings via pgvector cosine similarity
+  // 4. Format results for LLM consumption
+});
+```
+
+Mount: `app.use('/api/v1/rag', ragRouter)`
 
 Response:
 
@@ -1668,6 +2778,8 @@ Response:
 }
 ```
 
+---
+
 ### Task 9.3: LibreChat integration
 
 Document in `docs/integrations/librechat.md`:
@@ -1679,21 +2791,71 @@ Document in `docs/integrations/librechat.md`:
 
 ## Phase 10: Polish & Production
 
-> **Goal:** Tags, admin UI, production Docker images, end-to-end smoke test.
+> **Goal:** Tags, admin UI, admin API endpoints, production Docker images, end-to-end smoke test.
 
 ---
 
 ### Task 10.1: Tags
 
-CRUD endpoints for tags. Tag assignment on articles. Filter by tag in search.
+**Files:**
+- Create: `apps/api/src/routes/tags.ts`
+- Create: `apps/api/src/__tests__/routes/tags.test.ts`
+- Edit: `apps/api/src/app.ts` (mount router)
 
-### Task 10.2: Admin UI
+**Endpoints:**
 
-User management page (list users, change global role). Category role assignment UI.
+```
+GET    /api/tags                      → list all tags, viewer+
+POST   /api/tags                      → create tag, editor+
+DELETE /api/tags/:id                  → delete tag, admin only
+POST   /api/articles/:id/tags        → assign tags to article (body: { tagIds: string[] }), editor+
+DELETE /api/articles/:id/tags/:tagId → remove tag from article, editor+
+```
+
+Add tag filtering to `GET /api/search` — accept `tags` query param (comma-separated tag IDs or slugs), join through `article_tags`.
+
+Write failing tests. Implement. Mount at `app.use('/api/tags', tagsRouter)`. Run. Commit.
+
+---
+
+### Task 10.2: Admin API endpoints and UI
+
+**Files:**
+- Create: `apps/api/src/routes/admin/users.ts`
+- Create: `apps/api/src/__tests__/routes/admin/users.test.ts`
+- Create: `apps/web/app/(main)/admin/page.tsx`
+- Create: `apps/web/app/(main)/admin/users/page.tsx`
+- Create: `apps/web/app/(main)/admin/api-keys/page.tsx`
+- Edit: `apps/api/src/app.ts` (mount admin routes)
+
+**Admin API endpoints:**
+
+```
+GET    /api/admin/users                              → list users (paginated), admin only
+PATCH  /api/admin/users/:id                          → update global role, admin only
+POST   /api/admin/users/:id/category-roles           → assign category role, admin only
+DELETE /api/admin/users/:id/category-roles/:categoryId → remove category role, admin only
+```
+
+Mount: `app.use('/api/admin/users', adminUsersRouter)`
+
+**Admin UI pages:**
+- `/admin` — dashboard with links to user management and API key management
+- `/admin/users` — list users, change roles, assign category roles
+- `/admin/api-keys` — create/list/revoke API keys
+
+All admin pages check role via `useSession()` and redirect non-admins.
+
+---
 
 ### Task 10.3: Production Dockerfiles
 
-**`apps/api/Dockerfile`** — multi-stage build:
+**Files:**
+- Create: `apps/api/Dockerfile`
+- Create: `apps/web/Dockerfile`
+- Edit: `docker-compose.yml`
+
+**`apps/api/Dockerfile`** — multi-stage build with runtime dependencies:
 
 ```dockerfile
 FROM node:20-alpine AS builder
@@ -1708,11 +2870,97 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/package.json .
+COPY --from=builder /app/pnpm-lock.yaml .
+COPY --from=builder /app/pnpm-workspace.yaml .
+COPY --from=builder /app/packages/db/dist ./packages/db/dist
+COPY --from=builder /app/packages/db/package.json ./packages/db/
+COPY --from=builder /app/packages/types/dist ./packages/types/dist
+COPY --from=builder /app/packages/types/package.json ./packages/types/
+COPY --from=builder /app/packages/db/migrations ./packages/db/migrations
+RUN corepack enable && pnpm install --prod --frozen-lockfile
 ENV NODE_ENV=production
-CMD ["node", "dist/index.js"]
+# Run migrations then start the app
+CMD ["sh", "-c", "cd packages/db && node -e \"require('./dist/migrate.js')\" && cd /app && node dist/index.js"]
 ```
 
-**`apps/web/Dockerfile`** — similar multi-stage build using `next build` and `next start`.
+**Note:** Create `packages/db/src/migrate.ts` — a standalone script that runs Drizzle migrations:
+
+```typescript
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { db } from './connection.js';
+await migrate(db, { migrationsFolder: './migrations' });
+```
+
+**`apps/web/Dockerfile`** — Next.js standalone output:
+
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY . .
+RUN corepack enable && pnpm install --frozen-lockfile
+RUN pnpm --filter @dovetail/types build
+RUN pnpm --filter @dovetail/db build
+RUN pnpm --filter @dovetail/web build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/public ./apps/web/public
+CMD ["node", "apps/web/server.js"]
+```
+
+**Prerequisite:** Enable standalone output in `apps/web/next.config.ts`:
+
+```typescript
+const nextConfig = { output: 'standalone' };
+```
+
+**Update `docker-compose.yml`** — add required env vars:
+
+```yaml
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dovetail}:${POSTGRES_PASSWORD:-dovetail}@postgres:5432/${POSTGRES_DB:-dovetail}
+      PORT: 3001
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      OAUTH_PROVIDER: ${OAUTH_PROVIDER:-google}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      API_URL: http://api:3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      OAUTH_PROVIDER: ${OAUTH_PROVIDER:-google}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+```
+
+---
 
 ### Task 10.4: Final smoke test
 
