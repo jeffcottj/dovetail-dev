@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     env: {
       NEXTAUTH_SECRET: 'test-secret',
+      DATABASE_URL: 'postgres://mock:mock@localhost:5432/mock',
     },
   },
 });

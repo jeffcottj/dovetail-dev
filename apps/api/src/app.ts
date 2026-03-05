@@ -24,6 +24,15 @@ app.get('/api/me', authMiddleware, (req: AuthRequest, res) => {
   res.json(req.user);
 });
 
+import { categoriesRouter } from './routes/categories.js';
+app.use('/api/categories', categoriesRouter);
+
+import { articlesRouter } from './routes/articles.js';
+app.use('/api/articles', articlesRouter);
+
+import { versionsRouter } from './routes/versions.js';
+app.use('/api/articles/:id/versions', versionsRouter);
+
 // --- Mount route files above this line ---
 
 // Global error handler — must be after all routes
