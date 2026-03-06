@@ -1,9 +1,9 @@
-import NextAuth from 'next-auth';
+import NextAuth, { type NextAuthResult } from 'next-auth';
 import { eq } from 'drizzle-orm';
 import { db, users } from '@dovetail/db';
 import { authConfig } from './auth.config';
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+const nextAuth: NextAuthResult = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
@@ -56,3 +56,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
 });
+
+export const handlers: NextAuthResult['handlers'] = nextAuth.handlers;
+export const signIn: NextAuthResult['signIn'] = nextAuth.signIn;
+export const signOut: NextAuthResult['signOut'] = nextAuth.signOut;
+export const auth: NextAuthResult['auth'] = nextAuth.auth;

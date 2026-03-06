@@ -10,7 +10,6 @@ function buildEntraProvider() {
   return EntraId({
     clientId: process.env.ENTRA_CLIENT_ID!,
     clientSecret: process.env.ENTRA_CLIENT_SECRET!,
-    tenantId,
     issuer: `https://login.microsoftonline.com/${tenantId}/v2.0`,
   });
 }
