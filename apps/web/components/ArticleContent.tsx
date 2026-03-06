@@ -8,6 +8,7 @@ export function ArticleContent({ content }: { content: unknown }) {
     extensions: [StarterKit],
     content: content as Parameters<typeof useEditor>[0] extends { content?: infer C } ? C : never,
     editable: false,
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         class: 'prose-article',

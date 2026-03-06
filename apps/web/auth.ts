@@ -43,6 +43,7 @@ const nextAuth: NextAuthResult = NextAuth({
           .where(eq(users.email, token.email!))
           .limit(1);
         if (dbUser) {
+          token.sub = dbUser.id;
           token.userId = dbUser.id;
           token.role = dbUser.role;
         }

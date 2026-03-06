@@ -17,6 +17,7 @@ export function ArticleEditor({ article }: { article: Article }) {
   const editor = useEditor({
     extensions: [StarterKit],
     content: article.content as Parameters<typeof useEditor>[0] extends { content?: infer C } ? C : never,
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         class: 'prose-article',
