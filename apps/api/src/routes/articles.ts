@@ -15,12 +15,12 @@ export const articlesRouter = Router();
 const createArticleSchema = z.object({
   title: z.string().min(1).max(500),
   categoryId: z.string().uuid(),
-  content: z.record(z.unknown()).default({}),
+  content: z.record(z.string(), z.unknown()).default({}),
 });
 
 const updateArticleSchema = z.object({
   title: z.string().min(1).max(500).optional(),
-  content: z.record(z.unknown()).optional(),
+  content: z.record(z.string(), z.unknown()).optional(),
   categoryId: z.string().uuid().optional(),
 });
 
