@@ -6,7 +6,7 @@ import { requireRole } from '../middleware/requireRole.js';
 import { validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 
-export const versionsRouter = Router({ mergeParams: true });
+export const versionsRouter: Router = Router({ mergeParams: true });
 
 // GET /api/articles/:id/versions — paginated list
 versionsRouter.get('/', authMiddleware, validateQuery(paginationSchema), async (req, res) => {

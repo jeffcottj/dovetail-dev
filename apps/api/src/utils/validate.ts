@@ -8,7 +8,7 @@ export function validateBody(schema: ZodSchema) {
       next();
     } catch (err) {
       if (err instanceof ZodError) {
-        res.status(400).json({ error: 'Validation error', details: err.errors });
+        res.status(400).json({ error: 'Validation error', details: err.issues });
         return;
       }
       next(err);
@@ -24,7 +24,7 @@ export function validateQuery(schema: ZodSchema) {
       next();
     } catch (err) {
       if (err instanceof ZodError) {
-        res.status(400).json({ error: 'Validation error', details: err.errors });
+        res.status(400).json({ error: 'Validation error', details: err.issues });
         return;
       }
       next(err);
