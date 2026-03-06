@@ -7,7 +7,7 @@ import { requireRole } from '../middleware/requireRole.js';
 import { validateBody } from '../utils/validate.js';
 import { toSlug } from '../utils/slug.js';
 
-export const categoriesRouter = Router();
+export const categoriesRouter: Router = Router();
 
 const createCategorySchema = z.object({
   name: z.string().min(1).max(200),

@@ -10,7 +10,7 @@ import { toSlug } from '../utils/slug.js';
 import { resolveRole, hasMinimumRole } from '../services/permissions.js';
 import type { Role } from '@dovetail/types';
 
-export const articlesRouter = Router();
+export const articlesRouter: Router = Router();
 
 const createArticleSchema = z.object({
   title: z.string().min(1).max(500),

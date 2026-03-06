@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { authMiddleware, type AuthRequest } from './middleware/auth.js';
 
-export const app = express();
+export const app: ReturnType<typeof express> = express();
 
 app.use(helmet());
 app.use(cors({
