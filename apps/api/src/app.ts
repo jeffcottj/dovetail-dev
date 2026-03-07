@@ -33,6 +33,9 @@ app.use('/api/articles', articlesRouter);
 import { versionsRouter } from './routes/versions.js';
 app.use('/api/articles/:id/versions', versionsRouter);
 
+import { searchRouter } from './routes/search.js';
+app.use('/api/search', searchRouter);
+
 // --- Mount route files above this line ---
 
 // Global error handler — must be after all routes
