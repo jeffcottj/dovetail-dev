@@ -7,6 +7,7 @@ import { requireRole } from '../middleware/requireRole.js';
 import { validateBody, validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 import { toSlug } from '../utils/slug.js';
+import { extractText } from '../utils/tiptap.js';
 import { resolveRole, hasMinimumRole } from '../services/permissions.js';
 import type { Role } from '@dovetail/types';
 
@@ -85,6 +86,8 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
   const { title, categoryId, content } = req.body;
   const slug = toSlug(title);
 
+  const plainText = extractText(content);
+
   try {
     const [created] = await db.insert(articles).values({
       title,
@@ -92,6 +95,7 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
       categoryId,
       authorId: req.user!.id,
       content,
+      plainText,
       status: 'draft',
     }).returning();
     res.status(201).json(created);
@@ -104,6 +108,7 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
         categoryId,
         authorId: req.user!.id,
         content,
+        plainText,
         status: 'draft',
       }).returning();
       res.status(201).json(created);
@@ -157,6 +162,10 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
     }
     if (req.body.content !== undefined) updates.content = req.body.content;
     if (req.body.categoryId !== undefined) updates.categoryId = req.body.categoryId;
+
+    // Update plain_text for full-text search
+    const newContent = req.body.content ?? current.content;
+    updates.plainText = extractText(newContent);
 
     const [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
     result = updated;

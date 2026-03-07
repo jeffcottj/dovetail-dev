@@ -33,7 +33,7 @@ const mockArticle = {
   authorId: USER_ID,
   content: { type: 'doc', content: [] },
   status: 'draft' as const,
-  searchVector: null,
+  plainText: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   publishedAt: null,

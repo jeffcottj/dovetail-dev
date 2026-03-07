@@ -71,7 +71,7 @@ export const articles = pgTable('articles', {
   authorId: uuid('author_id').notNull().references(() => users.id),
   content: jsonb('content').notNull().default({}),
   status: statusEnum('status').notNull().default('draft'),
-  searchVector: text('search_vector'),  // managed by Postgres trigger, text placeholder
+  plainText: text('plain_text'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),
