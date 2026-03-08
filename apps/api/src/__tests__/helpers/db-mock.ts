@@ -9,6 +9,7 @@ export function createChain(resolvedValue: unknown = []) {
   const methods = [
     'from', 'where', 'values', 'returning', 'set',
     'orderBy', 'limit', 'offset', 'innerJoin', 'leftJoin',
+    'onConflictDoNothing', 'onConflictDoUpdate',
   ];
 
   for (const method of methods) {

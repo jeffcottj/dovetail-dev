@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
-import { db, articles } from '@dovetail/db';
+import { and, eq, gte, lte, inArray, sql } from 'drizzle-orm';
+import { db, articles, articleTags } from '@dovetail/db';
 import { authMiddleware } from '../middleware/auth.js';
 import { validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
@@ -16,6 +16,7 @@ const searchQuerySchema = paginationSchema.extend({
   authorId: z.string().uuid().optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
+  tags: z.string().optional(), // comma-separated tag IDs
 });
 
 // Reciprocal Rank Fusion — merges two ranked lists into one
@@ -44,6 +45,7 @@ function buildFilterConditions(params: {
   authorId?: string;
   from?: string;
   to?: string;
+  tags?: string;
 }) {
   const conditions: ReturnType<typeof eq>[] = [];
   conditions.push(eq(articles.status, 'published'));
@@ -51,6 +53,14 @@ function buildFilterConditions(params: {
   if (params.authorId) conditions.push(eq(articles.authorId, params.authorId));
   if (params.from) conditions.push(gte(articles.createdAt, new Date(params.from)));
   if (params.to) conditions.push(lte(articles.createdAt, new Date(params.to)));
+  if (params.tags) {
+    const tagIds = params.tags.split(',').map((t) => t.trim()).filter(Boolean);
+    if (tagIds.length > 0) {
+      conditions.push(
+        inArray(articles.id, sql`(SELECT article_id FROM article_tags WHERE tag_id IN (${sql.join(tagIds.map(id => sql`${id}`), sql`,`)}))`),
+      );
+    }
+  }
   return conditions;
 }
 
@@ -122,11 +132,11 @@ async function semanticSearch(q: string, limit: number, categoryId?: string) {
 }
 
 searchRouter.get('/', authMiddleware, validateQuery(searchQuerySchema), async (_req, res) => {
-  const { q, mode, categoryId, authorId, from, to, page, limit } = res.locals.query as z.infer<typeof searchQuerySchema>;
+  const { q, mode, categoryId, authorId, from, to, tags: tagFilter, page, limit } = res.locals.query as z.infer<typeof searchQuerySchema>;
   const offset = (page - 1) * limit;
 
   if (mode === 'fulltext') {
-    const conditions = buildFilterConditions({ categoryId, authorId, from, to });
+    const conditions = buildFilterConditions({ categoryId, authorId, from, to, tags: tagFilter });
     const { data, total } = await fulltextSearch(q, conditions, limit, offset);
     res.json(paginate(data, total, { page, limit }));
     return;
@@ -139,7 +149,7 @@ searchRouter.get('/', authMiddleware, validateQuery(searchQuerySchema), async (_
   }
 
   // mode === 'hybrid': run both in parallel, merge with RRF
-  const conditions = buildFilterConditions({ categoryId, authorId, from, to });
+  const conditions = buildFilterConditions({ categoryId, authorId, from, to, tags: tagFilter });
   const [fulltextResult, semanticResults] = await Promise.all([
     fulltextSearch(q, conditions, limit, offset),
     semanticSearch(q, limit, categoryId),

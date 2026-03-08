@@ -39,8 +39,15 @@ app.use('/api/search', searchRouter);
 import { apiKeysRouter } from './routes/admin/api-keys.js';
 app.use('/api/admin/api-keys', apiKeysRouter);
 
+import { adminUsersRouter } from './routes/admin/users.js';
+app.use('/api/admin/users', adminUsersRouter);
+
 import { ragRouter } from './routes/rag.js';
 app.use('/api/v1/rag', ragRouter);
+
+import { tagsRouter, articleTagsRouter } from './routes/tags.js';
+app.use('/api/tags', tagsRouter);
+app.use('/api/articles/:id/tags', articleTagsRouter);
 
 // --- Mount route files above this line ---
 

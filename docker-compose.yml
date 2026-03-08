@@ -22,6 +22,12 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-dovetail}:${POSTGRES_PASSWORD:-dovetail}@postgres:5432/${POSTGRES_DB:-dovetail}
       PORT: 3001
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      OAUTH_PROVIDER: ${OAUTH_PROVIDER:-google}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     ports:
       - "3001:3001"
     depends_on:
@@ -34,6 +40,15 @@ services:
       dockerfile: apps/web/Dockerfile
     environment:
       API_URL: http://api:3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      OAUTH_PROVIDER: ${OAUTH_PROVIDER:-google}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
     ports:
       - "3000:3000"
     depends_on:
