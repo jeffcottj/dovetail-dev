@@ -29,7 +29,7 @@ export async function apiKeyAuth(req: ApiKeyRequest, res: Response, next: NextFu
   }
 
   // Update last_used_at (fire-and-forget)
-  void db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, key.id));
+  db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, key.id)).catch(() => {});
 
   req.apiKeyId = key.id;
   next();
