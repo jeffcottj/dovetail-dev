@@ -9,6 +9,7 @@ import { paginationSchema, paginate } from '../utils/pagination.js';
 import { toSlug } from '../utils/slug.js';
 import { extractText } from '../utils/tiptap.js';
 import { resolveRole, hasMinimumRole } from '../services/permissions.js';
+import { generateEmbeddings } from '../services/embedding-pipeline.js';
 import type { Role } from '@dovetail/types';
 
 export const articlesRouter: Router = Router();
@@ -98,6 +99,7 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
       plainText,
       status: 'draft',
     }).returning();
+    void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
     res.status(201).json(created);
   } catch (err: any) {
     if (err.code === '23505' && err.constraint_name?.includes('slug')) {
@@ -111,6 +113,7 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
         plainText,
         status: 'draft',
       }).returning();
+      void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
       res.status(201).json(created);
     } else {
       throw err;
@@ -172,6 +175,7 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
   });
 
   if (!res.headersSent) {
+    void generateEmbeddings(id).catch(err => console.error('Embedding generation failed:', err));
     res.json(result);
   }
 });
