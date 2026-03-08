@@ -16,6 +16,12 @@ COPY apps/web/ ./apps/web/
 
 RUN pnpm --filter @dovetail/types build
 RUN pnpm --filter @dovetail/db build
+
+# Next.js expects .env to exist at build time (stat check);
+# DATABASE_URL needed because @dovetail/db validates at import time during page collection
+RUN touch apps/web/.env
+RUN mkdir -p apps/web/public
+ENV DATABASE_URL=postgres://build:build@localhost:5432/build
 RUN pnpm --filter @dovetail/web build
 
 FROM node:20-alpine AS runner
