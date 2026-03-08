@@ -36,6 +36,12 @@ app.use('/api/articles/:id/versions', versionsRouter);
 import { searchRouter } from './routes/search.js';
 app.use('/api/search', searchRouter);
 
+import { apiKeysRouter } from './routes/admin/api-keys.js';
+app.use('/api/admin/api-keys', apiKeysRouter);
+
+import { ragRouter } from './routes/rag.js';
+app.use('/api/v1/rag', ragRouter);
+
 // --- Mount route files above this line ---
 
 // Global error handler — must be after all routes
