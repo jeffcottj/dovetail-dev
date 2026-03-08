@@ -18,13 +18,23 @@ vi.mock('@dovetail/db', async (importOriginal) => {
   };
 });
 
+// Mock embedding service for semantic search tests
+vi.mock('../../services/embeddings.js', () => ({
+  createEmbeddingProvider: vi.fn(() => ({
+    embed: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+    embedMany: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
+  })),
+}));
+
 import { app } from '../../app.js';
 import { db } from '@dovetail/db';
 
 const CAT_ID = '00000000-0000-4000-8000-000000000001';
+const ART_ID_1 = '00000000-0000-4000-8000-000000000010';
+const ART_ID_2 = '00000000-0000-4000-8000-000000000020';
 
 const mockSearchResult = {
-  id: '00000000-0000-4000-8000-000000000010',
+  id: ART_ID_1,
   title: 'Legal Aid Overview',
   slug: 'legal-aid-overview',
   categoryId: CAT_ID,
@@ -43,7 +53,7 @@ describe('Search routes', () => {
     viewerToken = await makeToken({ sub: 'user-1', role: 'viewer' });
   });
 
-  describe('GET /api/search', () => {
+  describe('GET /api/search (fulltext — default)', () => {
     it('returns 401 without auth', async () => {
       const res = await supertest(app).get('/api/search?q=legal');
       expect(res.status).toBe(401);
@@ -103,6 +113,138 @@ describe('Search routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveLength(1);
+    });
+
+    it('accepts mode=fulltext explicitly', async () => {
+      const countChain = createChain([{ count: 1 }]);
+      const dataChain = createChain([mockSearchResult]);
+      (db.select as Mock)
+        .mockReturnValueOnce(countChain)
+        .mockReturnValueOnce(dataChain);
+
+      const res = await supertest(app)
+        .get('/api/search?q=legal&mode=fulltext')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+    });
+  });
+
+  describe('GET /api/search?mode=semantic', () => {
+    it('returns semantic search results', async () => {
+      // Semantic search uses db.execute for raw SQL
+      (db.execute as Mock).mockResolvedValue([
+        {
+          article_id: ART_ID_1,
+          title: 'Legal Aid Overview',
+          slug: 'legal-aid-overview',
+          category_id: CAT_ID,
+          author_id: 'user-1',
+          status: 'published',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          chunk_text: 'Some relevant chunk',
+          similarity: 0.92,
+        },
+      ]);
+
+      const res = await supertest(app)
+        .get('/api/search?q=legal&mode=semantic')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].similarity).toBeDefined();
+    });
+
+    it('returns empty results when no embeddings match', async () => {
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .get('/api/search?q=nonexistent&mode=semantic')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(0);
+    });
+  });
+
+  describe('GET /api/search?mode=hybrid', () => {
+    it('returns merged results from fulltext and semantic', async () => {
+      // Fulltext: count + results
+      const countChain = createChain([{ count: 1 }]);
+      const fulltextChain = createChain([mockSearchResult]);
+      (db.select as Mock)
+        .mockReturnValueOnce(countChain)
+        .mockReturnValueOnce(fulltextChain);
+
+      // Semantic results
+      (db.execute as Mock).mockResolvedValue([
+        {
+          article_id: ART_ID_2,
+          title: 'Tenant Rights',
+          slug: 'tenant-rights',
+          category_id: CAT_ID,
+          author_id: 'user-1',
+          status: 'published',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          chunk_text: 'About tenant rights',
+          similarity: 0.85,
+        },
+      ]);
+
+      const res = await supertest(app)
+        .get('/api/search?q=legal&mode=hybrid')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      // Should have results from both sources (deduplicated)
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('deduplicates articles appearing in both result sets', async () => {
+      // Same article in both fulltext and semantic
+      const countChain = createChain([{ count: 1 }]);
+      const fulltextChain = createChain([mockSearchResult]);
+      (db.select as Mock)
+        .mockReturnValueOnce(countChain)
+        .mockReturnValueOnce(fulltextChain);
+
+      (db.execute as Mock).mockResolvedValue([
+        {
+          article_id: ART_ID_1, // Same as fulltext result
+          title: 'Legal Aid Overview',
+          slug: 'legal-aid-overview',
+          category_id: CAT_ID,
+          author_id: 'user-1',
+          status: 'published',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          chunk_text: 'Some chunk',
+          similarity: 0.90,
+        },
+      ]);
+
+      const res = await supertest(app)
+        .get('/api/search?q=legal&mode=hybrid')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      // Should deduplicate — only 1 article
+      const ids = res.body.data.map((r: any) => r.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+  });
+
+  describe('GET /api/search invalid mode', () => {
+    it('returns 400 for unknown mode', async () => {
+      const res = await supertest(app)
+        .get('/api/search?q=legal&mode=invalid')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(400);
     });
   });
 });
