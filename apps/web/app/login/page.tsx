@@ -1,9 +1,5 @@
 import { signIn } from '../../auth';
 
-function getProviderId(): 'google' | 'microsoft-entra-id' {
-  return process.env.OAUTH_PROVIDER === 'entra' ? 'microsoft-entra-id' : 'google';
-}
-
 export default function LoginPage() {
   return (
     <main>
@@ -11,7 +7,7 @@ export default function LoginPage() {
       <form
         action={async () => {
           'use server';
-          await signIn(getProviderId());
+          await signIn(process.env.OAUTH_PROVIDER ?? 'google');
         }}
       >
         <button type="submit">Sign in</button>
