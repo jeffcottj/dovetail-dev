@@ -50,7 +50,7 @@ export default function LoginPage() {
           <form
             action={async () => {
               'use server';
-              await signIn(providerId);
+              await signIn(providerId, { redirectTo: '/' });
             }}
           >
             <button

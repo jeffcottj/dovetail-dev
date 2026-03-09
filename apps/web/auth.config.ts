@@ -11,6 +11,14 @@ function buildEntraProvider() {
     clientId: process.env.ENTRA_CLIENT_ID!,
     clientSecret: process.env.ENTRA_CLIENT_SECRET!,
     issuer: `https://login.microsoftonline.com/${tenantId}/v2.0`,
+    profile(profile) {
+      return {
+        id: profile.sub,
+        name: profile.name,
+        email: profile.email ?? profile.preferred_username,
+        image: null,
+      };
+    },
   });
 }
 

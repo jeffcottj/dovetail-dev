@@ -6,9 +6,17 @@ import type { NextMiddlewareResult } from 'next/dist/server/web/types';
 const nextAuth: NextAuthResult = NextAuth(authConfig);
 
 const middleware: ReturnType<NextAuthResult['auth']> = nextAuth.auth((req) => {
-  if (!req.auth && req.nextUrl.pathname !== '/login') {
+  const isLoggedIn = !!req.auth;
+  const isOnLogin = req.nextUrl.pathname === '/login';
+
+  if (!isLoggedIn && !isOnLogin) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
+
+  if (isLoggedIn && isOnLogin) {
+    return NextResponse.redirect(new URL('/', req.url));
+  }
+
   return undefined as unknown as NextMiddlewareResult;
 });
 
