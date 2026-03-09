@@ -1,5 +1,8 @@
 import { signIn } from '../../auth';
 
+// Must be dynamic so OAUTH_PROVIDER is read at runtime, not build time
+export const dynamic = 'force-dynamic';
+
 const providerId =
   (process.env.OAUTH_PROVIDER ?? 'google') === 'entra'
     ? 'microsoft-entra-id'

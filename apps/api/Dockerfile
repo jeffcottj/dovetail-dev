@@ -14,6 +14,9 @@ COPY packages/types/ ./packages/types/
 COPY packages/db/ ./packages/db/
 COPY apps/api/ ./apps/api/
 
+# Re-link binaries after source copy (BuildKit COPY replaces directory contents)
+RUN pnpm install --frozen-lockfile
+
 RUN pnpm --filter @dovetail/types build
 RUN pnpm --filter @dovetail/db build
 RUN pnpm --filter @dovetail/api build
