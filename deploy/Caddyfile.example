@@ -1,0 +1,26 @@
+# Dovetail reverse proxy configuration for Caddy
+#
+# Copy to /etc/caddy/Caddyfile (or include from it) and adjust the domain.
+# Reload after changes: sudo systemctl reload caddy
+#
+# Routing rules:
+#   /api/auth/*  → Next.js (Auth.js OAuth callbacks)
+#   /api/*       → Express API (preserves /api prefix)
+#   everything else → Next.js frontend
+
+dovetail.example.com {
+    # Auth callbacks must reach Next.js (Auth.js lives there)
+    handle /api/auth/* {
+        reverse_proxy localhost:3000
+    }
+
+    # Other API routes go to Express (preserve /api prefix)
+    handle /api/* {
+        reverse_proxy localhost:3001
+    }
+
+    # Everything else goes to Next.js
+    handle {
+        reverse_proxy localhost:3000
+    }
+}
