@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { apiFetch } from '../lib/api';
 import type { Category } from '@dovetail/types';
 import { SidebarTree } from './SidebarTree';
+import { UserMenu } from './UserMenu';
 
 export async function Sidebar() {
   let categories: Category[] = [];
@@ -12,7 +13,7 @@ export async function Sidebar() {
   }
 
   return (
-    <aside className="w-64 shrink-0 bg-sidebar text-sidebar-text min-h-screen flex flex-col border-r border-sidebar-hover">
+    <>
       <div className="p-5 border-b border-sidebar-hover">
         <Link href="/" className="block">
           <h1 className="font-[family-name:var(--font-display)] text-xl font-bold text-sidebar-text-active tracking-tight">
@@ -32,6 +33,8 @@ export async function Sidebar() {
         </div>
         <SidebarTree categories={categories} />
       </nav>
-    </aside>
+
+      <UserMenu />
+    </>
   );
 }
