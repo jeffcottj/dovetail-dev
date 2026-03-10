@@ -8,31 +8,8 @@ import { DropdownMenu, DropdownItem } from './ui/DropdownMenu';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { apiClientFetch } from '../lib/api-client';
+import { buildTree, type TreeNode } from '../lib/categories';
 import type { Article, Category } from '@dovetail/types';
-
-interface TreeNode extends Category {
-  children: TreeNode[];
-}
-
-function buildTree(categories: Category[]): TreeNode[] {
-  const map = new Map<string, TreeNode>();
-  const roots: TreeNode[] = [];
-
-  for (const cat of categories) {
-    map.set(cat.id, { ...cat, children: [] });
-  }
-
-  for (const cat of categories) {
-    const node = map.get(cat.id)!;
-    if (cat.parentId && map.has(cat.parentId)) {
-      map.get(cat.parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  return roots;
-}
 
 function CategoryTreeItem({
   node,

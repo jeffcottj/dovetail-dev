@@ -5,49 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { apiClientFetch } from '../lib/api-client';
-import { Button } from '../components/ui/Button';
+import { buildTree, flattenTree } from '../lib/categories';
+import { Button } from './ui/Button';
 import type { Article, Category } from '@dovetail/types';
-
-interface TreeNode extends Category {
-  children: TreeNode[];
-}
-
-function buildTree(categories: Category[]): TreeNode[] {
-  const map = new Map<string, TreeNode>();
-  const roots: TreeNode[] = [];
-
-  for (const cat of categories) {
-    map.set(cat.id, { ...cat, children: [] });
-  }
-
-  for (const cat of categories) {
-    const node = map.get(cat.id)!;
-    if (cat.parentId && map.has(cat.parentId)) {
-      map.get(cat.parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  return roots;
-}
-
-interface FlatOption {
-  id: string;
-  name: string;
-  depth: number;
-}
-
-function flattenTree(nodes: TreeNode[], depth = 0): FlatOption[] {
-  const result: FlatOption[] = [];
-  for (const node of nodes) {
-    result.push({ id: node.id, name: node.name, depth });
-    if (node.children.length > 0) {
-      result.push(...flattenTree(node.children, depth + 1));
-    }
-  }
-  return result;
-}
 
 interface ArticleCreateFormProps {
   categories: Category[];
@@ -131,7 +91,8 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     }
   }, [editor, title, categoryId, router]);
 
-  const canSubmit = title.trim().length > 0 && categoryId.length > 0;
+  const busy = saving || publishing;
+  const canSubmit = title.trim().length > 0 && categoryId.length > 0 && !busy;
 
   return (
     <div>
@@ -142,7 +103,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
             variant="secondary"
             size="md"
             onClick={handleSave}
-            disabled={saving || !canSubmit}
+            disabled={!canSubmit}
           >
             {saving ? 'Saving...' : 'Save as Draft'}
           </Button>
@@ -150,7 +111,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
             variant="primary"
             size="md"
             onClick={handlePublish}
-            disabled={publishing || !canSubmit}
+            disabled={!canSubmit}
           >
             {publishing ? 'Publishing...' : 'Publish'}
           </Button>

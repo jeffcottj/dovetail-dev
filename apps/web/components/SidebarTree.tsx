@@ -4,30 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { Category } from '@dovetail/types';
-
-interface TreeNode extends Category {
-  children: TreeNode[];
-}
-
-function buildTree(categories: Category[]): TreeNode[] {
-  const map = new Map<string, TreeNode>();
-  const roots: TreeNode[] = [];
-
-  for (const cat of categories) {
-    map.set(cat.id, { ...cat, children: [] });
-  }
-
-  for (const cat of categories) {
-    const node = map.get(cat.id)!;
-    if (cat.parentId && map.has(cat.parentId)) {
-      map.get(cat.parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  return roots;
-}
+import { buildTree, type TreeNode } from '../lib/categories';
 
 function TreeItem({ node, depth }: { node: TreeNode; depth: number }) {
   const pathname = usePathname();
