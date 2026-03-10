@@ -11,6 +11,16 @@ export async function apiClientFetch<T = unknown>(path: string, init?: RequestIn
       ...init?.headers,
     },
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    let message = `API error: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body.error) message = body.error;
+      else if (body.message) message = body.message;
+    } catch {
+      // Response body not JSON — use default message
+    }
+    throw new Error(message);
+  }
   return res.json() as Promise<T>;
 }
