@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { apiClientFetch } from '../lib/api-client';
@@ -43,13 +43,14 @@ export function CategoryModal({
     }
   }, [open, category, parentId]);
 
-  const tree = buildTree(categories);
-  const flatOptions = flattenTree(tree);
+  const parentOptions = useMemo(() => {
+    const tree = buildTree(categories);
+    const flatOptions = flattenTree(tree);
 
-  // When editing, exclude the category itself and its descendants from parent options
-  // to prevent circular references
-  const excludeIds = new Set<string>();
-  if (category) {
+    if (!category) return flatOptions;
+
+    // Exclude the category itself and its descendants to prevent circular references
+    const excludeIds = new Set<string>();
     function collectDescendants(id: string) {
       excludeIds.add(id);
       for (const cat of categories) {
@@ -59,9 +60,9 @@ export function CategoryModal({
       }
     }
     collectDescendants(category.id);
-  }
 
-  const parentOptions = flatOptions.filter((opt) => !excludeIds.has(opt.id));
+    return flatOptions.filter((opt) => !excludeIds.has(opt.id));
+  }, [categories, category]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

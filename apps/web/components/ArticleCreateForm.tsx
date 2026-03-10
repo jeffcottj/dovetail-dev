@@ -135,6 +135,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Article title"
+        aria-label="Article title"
         className="w-full font-[family-name:var(--font-display)] text-3xl font-bold text-ink bg-transparent border-none outline-none placeholder:text-border mb-6 tracking-tight"
       />
 

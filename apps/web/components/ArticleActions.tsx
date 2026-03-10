@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MoreHorizontal, Pencil, FolderInput, Archive } from 'lucide-react';
@@ -99,14 +99,15 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
   );
   const [moving, setMoving] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
-  const tree = buildTree(categories);
+  const tree = useMemo(() => buildTree(categories), [categories]);
 
   async function handleMove() {
     if (!selectedCategoryId || selectedCategoryId === article.categoryId) return;
     setMoving(true);
-    setError(null);
+    setMoveError(null);
     try {
       await apiClientFetch(`/api/articles/${article.id}`, {
         method: 'PATCH',
@@ -115,7 +116,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
       setMoveModalOpen(false);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to move article');
+      setMoveError(err instanceof Error ? err.message : 'Failed to move article');
     } finally {
       setMoving(false);
     }
@@ -123,7 +124,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
 
   async function handleArchive() {
     setArchiving(true);
-    setError(null);
+    setArchiveError(null);
     try {
       await apiClientFetch(`/api/articles/${article.id}`, {
         method: 'DELETE',
@@ -131,7 +132,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
       setArchiveModalOpen(false);
       router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive article');
+      setArchiveError(err instanceof Error ? err.message : 'Failed to archive article');
     } finally {
       setArchiving(false);
     }
@@ -177,7 +178,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
         open={moveModalOpen}
         onClose={() => {
           setMoveModalOpen(false);
-          setError(null);
+          setMoveError(null);
           setSelectedCategoryId(article.categoryId);
         }}
         title="Move to category"
@@ -204,9 +205,9 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
             </p>
           )}
         </div>
-        {error && (
+        {moveError && (
           <p className="text-sm text-danger mb-3 font-[family-name:var(--font-ui)]">
-            {error}
+            {moveError}
           </p>
         )}
         <div className="flex justify-end gap-2">
@@ -215,7 +216,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
             size="sm"
             onClick={() => {
               setMoveModalOpen(false);
-              setError(null);
+              setMoveError(null);
               setSelectedCategoryId(article.categoryId);
             }}
           >
@@ -240,7 +241,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
         open={archiveModalOpen}
         onClose={() => {
           setArchiveModalOpen(false);
-          setError(null);
+          setArchiveError(null);
         }}
         title="Archive article"
       >
@@ -248,9 +249,9 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
           Are you sure? This will archive the article &ldquo;{article.title}&rdquo;.
           It will no longer appear in search results or category listings.
         </p>
-        {error && (
+        {archiveError && (
           <p className="text-sm text-danger mb-3 font-[family-name:var(--font-ui)]">
-            {error}
+            {archiveError}
           </p>
         )}
         <div className="flex justify-end gap-2">
@@ -259,7 +260,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
             size="sm"
             onClick={() => {
               setArchiveModalOpen(false);
-              setError(null);
+              setArchiveError(null);
             }}
           >
             Cancel
