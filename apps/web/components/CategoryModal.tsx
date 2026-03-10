@@ -63,7 +63,7 @@ export function CategoryModal({
 
   const parentOptions = flatOptions.filter((opt) => !excludeIds.has(opt.id));
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
