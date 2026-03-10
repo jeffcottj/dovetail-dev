@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { apiFetch } from '../lib/api';
-import type { Category } from '@dovetail/types';
-import { SidebarTree } from './SidebarTree';
+import { auth } from '../auth';
+import type { Category, Role } from '@dovetail/types';
+import { SidebarCategories } from './SidebarCategories';
 import { UserMenu } from './UserMenu';
 
 export async function Sidebar() {
@@ -11,6 +12,9 @@ export async function Sidebar() {
   } catch {
     // API unavailable — render empty sidebar
   }
+
+  const session = await auth();
+  const userRole: Role = (session?.user?.role as Role) ?? 'viewer';
 
   return (
     <>
@@ -26,12 +30,7 @@ export async function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3">
-        <div className="px-4 py-2">
-          <span className="text-[10px] font-[family-name:var(--font-ui)] uppercase tracking-widest text-sidebar-text/40 font-semibold">
-            Categories
-          </span>
-        </div>
-        <SidebarTree categories={categories} />
+        <SidebarCategories categories={categories} userRole={userRole} />
       </nav>
 
       <UserMenu />

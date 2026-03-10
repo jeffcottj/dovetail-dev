@@ -24,7 +24,7 @@ export function buildTree(categories: Category[]): TreeNode[] {
   return roots;
 }
 
-interface FlatOption {
+export interface FlatOption {
   id: string;
   name: string;
   depth: number;

@@ -2,15 +2,60 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import type { Category } from '@dovetail/types';
+import { usePathname, useRouter } from 'next/navigation';
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import type { Category, Role } from '@dovetail/types';
 import { buildTree, type TreeNode } from '../lib/categories';
+import { hasMinimumRole } from '../lib/roles';
+import { DropdownMenu, DropdownItem } from './ui/DropdownMenu';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
+import { CategoryModal } from './CategoryModal';
+import { apiClientFetch } from '../lib/api-client';
 
-function TreeItem({ node, depth }: { node: TreeNode; depth: number }) {
+interface TreeItemProps {
+  node: TreeNode;
+  depth: number;
+  userRole: Role;
+  categories: Category[];
+  onMutationSuccess: () => void;
+}
+
+function TreeItem({
+  node,
+  depth,
+  userRole,
+  categories,
+  onMutationSuccess,
+}: TreeItemProps) {
   const pathname = usePathname();
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const isActive = pathname === `/categories/${node.slug}`;
+  const isAdmin = hasMinimumRole(userRole, 'admin');
+
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await apiClientFetch(`/api/categories/${node.id}`, {
+        method: 'DELETE',
+      });
+      setDeleteModalOpen(false);
+      onMutationSuccess();
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : 'Failed to delete category'
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <li>
@@ -46,20 +91,118 @@ function TreeItem({ node, depth }: { node: TreeNode; depth: number }) {
         >
           {node.name}
         </Link>
+        {isAdmin && (
+          <DropdownMenu
+            trigger={
+              <button
+                type="button"
+                className="w-5 h-5 flex items-center justify-center text-sidebar-text/0 group-hover:text-sidebar-text/40 hover:!text-sidebar-text/70 transition-colors shrink-0 rounded"
+                aria-label={`Actions for ${node.name}`}
+              >
+                <MoreHorizontal className="w-3.5 h-3.5" />
+              </button>
+            }
+            align="left"
+          >
+            <DropdownItem onClick={() => setRenameModalOpen(true)}>
+              <span className="flex items-center gap-2">
+                <Pencil className="w-3.5 h-3.5" />
+                Rename
+              </span>
+            </DropdownItem>
+            <DropdownItem
+              variant="danger"
+              onClick={() => setDeleteModalOpen(true)}
+            >
+              <span className="flex items-center gap-2">
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
+              </span>
+            </DropdownItem>
+          </DropdownMenu>
+        )}
       </div>
+
       {hasChildren && expanded && (
         <ul>
           {node.children.map((child) => (
-            <TreeItem key={child.id} node={child} depth={depth + 1} />
+            <TreeItem
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              userRole={userRole}
+              categories={categories}
+              onMutationSuccess={onMutationSuccess}
+            />
           ))}
         </ul>
       )}
+
+      {/* Rename modal */}
+      <CategoryModal
+        open={renameModalOpen}
+        onClose={() => setRenameModalOpen(false)}
+        onSuccess={onMutationSuccess}
+        categories={categories}
+        category={node}
+      />
+
+      {/* Delete confirmation modal */}
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setDeleteError(null);
+        }}
+        title="Delete category"
+      >
+        <p className="text-sm text-ink font-[family-name:var(--font-ui)] mb-4">
+          Are you sure you want to delete &ldquo;{node.name}&rdquo;?
+          This cannot be undone. Categories with children or articles cannot be
+          deleted.
+        </p>
+        {deleteError && (
+          <p className="text-sm text-danger mb-3 font-[family-name:var(--font-ui)]">
+            {deleteError}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setDeleteModalOpen(false);
+              setDeleteError(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </div>
+      </Modal>
     </li>
   );
 }
 
-export function SidebarTree({ categories }: { categories: Category[] }) {
+interface SidebarTreeProps {
+  categories: Category[];
+  userRole: Role;
+}
+
+export function SidebarTree({ categories, userRole }: SidebarTreeProps) {
+  const router = useRouter();
   const tree = buildTree(categories);
+
+  function handleMutationSuccess() {
+    router.refresh();
+  }
 
   if (tree.length === 0) {
     return (
@@ -72,7 +215,14 @@ export function SidebarTree({ categories }: { categories: Category[] }) {
   return (
     <ul>
       {tree.map((node) => (
-        <TreeItem key={node.id} node={node} depth={0} />
+        <TreeItem
+          key={node.id}
+          node={node}
+          depth={0}
+          userRole={userRole}
+          categories={categories}
+          onMutationSuccess={handleMutationSuccess}
+        />
       ))}
     </ul>
   );
