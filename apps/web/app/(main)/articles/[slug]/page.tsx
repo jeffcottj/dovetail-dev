@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { apiFetch } from '../../../../lib/api';
 import { auth } from '../../../../auth';
 import { ArticleContent } from '../../../../components/ArticleContent';
-import type { Article } from '@dovetail/types';
+import { ArticleActions } from '../../../../components/ArticleActions';
+import type { Article, Category } from '@dovetail/types';
 
 export default async function ArticlePage({
   params,
@@ -22,6 +23,15 @@ export default async function ArticlePage({
 
   const userRole = session?.user?.role ?? 'viewer';
   const canEdit = userRole === 'editor' || userRole === 'admin';
+
+  let categories: Category[] = [];
+  if (canEdit) {
+    try {
+      categories = await apiFetch<Category[]>('/api/categories');
+    } catch {
+      // Categories unavailable — action menu will show empty list
+    }
+  }
 
   return (
     <article>
@@ -50,12 +60,7 @@ export default async function ArticlePage({
             </div>
           </div>
           {canEdit && (
-            <Link
-              href={`/articles/${slug}/edit`}
-              className="shrink-0 font-[family-name:var(--font-ui)] text-sm px-4 py-2 bg-accent text-parchment rounded hover:bg-accent-hover transition-colors"
-            >
-              Edit
-            </Link>
+            <ArticleActions article={article} categories={categories} />
           )}
         </div>
       </header>
