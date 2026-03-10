@@ -1,8 +1,8 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { apiFetch } from '../../../../../lib/api';
 import { auth } from '../../../../../auth';
 import { RestoreButton } from '../../../../../components/RestoreButton';
+import { Breadcrumbs } from '../../../../../components/Breadcrumbs';
 import type { Article, ArticleVersion } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -37,13 +37,12 @@ export default async function VersionHistoryPage({
   return (
     <div>
       <header className="mb-8">
-        <div className="flex items-center gap-2 text-xs font-[family-name:var(--font-ui)] text-ink-muted mb-3">
-          <Link href={`/articles/${slug}`} className="hover:text-accent transition-colors">
-            {article.title}
-          </Link>
-          <span className="text-border">/</span>
-          <span>History</span>
-        </div>
+        <Breadcrumbs
+          segments={[
+            { label: article.title, href: `/articles/${slug}` },
+            { label: 'History' },
+          ]}
+        />
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-ink tracking-tight">
           Version History
         </h1>
