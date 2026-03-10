@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { FilePlus } from 'lucide-react';
 import { apiFetch } from '../../../../lib/api';
+import { RoleGate } from '../../../../components/RoleGate';
+import { Button } from '../../../../components/ui/Button';
 import type { Category, Article } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -52,7 +55,19 @@ export default async function CategoryPage({
       </header>
 
       {articleList.length === 0 ? (
-        <p className="text-ink-muted italic">No articles in this category yet.</p>
+        <div className="text-center py-12">
+          <p className="text-ink-muted font-[family-name:var(--font-ui)] mb-4">
+            No articles in this category yet.
+          </p>
+          <RoleGate minimumRole="editor">
+            <Link href={`/articles/new?categoryId=${category.id}`}>
+              <Button>
+                <FilePlus className="w-4 h-4" />
+                Create the first article
+              </Button>
+            </Link>
+          </RoleGate>
+        </div>
       ) : (
         <ul className="space-y-1">
           {articleList.map((article) => (

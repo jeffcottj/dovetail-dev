@@ -1,33 +1,38 @@
 import { redirect } from 'next/navigation';
-import { auth } from '../../../../auth';
 import { apiFetch } from '../../../../lib/api';
-import { hasMinimumRole } from '../../../../lib/roles';
-import { NewArticleForm } from '../../../../components/NewArticleForm';
-import { Breadcrumbs } from '../../../../components/Breadcrumbs';
-import type { Category, Role } from '@dovetail/types';
+import { auth } from '../../../../auth';
+import { ArticleCreateForm } from '../../../../components/ArticleCreateForm';
+import type { Category } from '@dovetail/types';
 
-export default async function NewArticlePage() {
+export default async function NewArticlePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ categoryId?: string }>;
+}) {
   const session = await auth();
-  const userRole = (session?.user?.role as Role) ?? 'viewer';
+  const userRole = session?.user?.role ?? 'viewer';
 
-  if (!hasMinimumRole(userRole, 'editor')) {
+  if (userRole === 'viewer') {
     redirect('/');
   }
+
+  const { categoryId } = await searchParams;
 
   let categories: Category[] = [];
   try {
     categories = await apiFetch<Category[]>('/api/categories');
   } catch {
-    // API unavailable
+    // If categories fail to load, we still render the form (selector will be empty)
   }
 
   return (
     <div>
-      <Breadcrumbs segments={[{ label: 'New Article' }]} />
-      <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-ink mb-6 tracking-tight">
-        New Article
-      </h1>
-      <NewArticleForm categories={categories} />
+      <div className="mb-4">
+        <span className="text-xs font-[family-name:var(--font-ui)] text-ink-muted uppercase tracking-widest">
+          New Article
+        </span>
+      </div>
+      <ArticleCreateForm categories={categories} defaultCategoryId={categoryId} />
     </div>
   );
 }
