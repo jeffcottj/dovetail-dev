@@ -4,7 +4,7 @@ import { apiFetch } from '../../../../lib/api';
 import { auth } from '../../../../auth';
 import { ArticleContent } from '../../../../components/ArticleContent';
 import { ArticleActions } from '../../../../components/ArticleActions';
-import type { Article, Category } from '@dovetail/types';
+import type { Article, Category, Tag } from '@dovetail/types';
 
 export default async function ArticlePage({
   params,
@@ -33,6 +33,13 @@ export default async function ArticlePage({
     }
   }
 
+  let articleTags: Tag[] = [];
+  try {
+    articleTags = await apiFetch<Tag[]>(`/api/articles/${article.id}/tags`);
+  } catch {
+    // Tags unavailable
+  }
+
   return (
     <article>
       <header className="mb-8 border-b border-border-light pb-6">
@@ -58,6 +65,19 @@ export default async function ArticlePage({
                 View history
               </Link>
             </div>
+            {articleTags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {articleTags.map((tag) => (
+                  <Link
+                    key={tag.id}
+                    href={`/search?tags=${tag.id}`}
+                    className="inline-flex items-center text-xs font-[family-name:var(--font-ui)] font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+                  >
+                    {tag.name}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
           {canEdit && (
             <ArticleActions article={article} categories={categories} />

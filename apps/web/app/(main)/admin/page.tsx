@@ -14,10 +14,10 @@ export default async function AdminPage() {
         Admin Dashboard
       </h1>
       <p className="text-ink-muted font-[family-name:var(--font-ui)] text-sm mb-8">
-        Manage users, roles, and API keys.
+        Manage users, roles, API keys, and tags.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-3xl">
         <Link
           href="/admin/users"
           className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
@@ -39,6 +39,18 @@ export default async function AdminPage() {
           </h2>
           <p className="text-ink-light text-sm">
             Create, view, and revoke API keys for RAG integrations.
+          </p>
+        </Link>
+
+        <Link
+          href="/admin/tags"
+          className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
+        >
+          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-2">
+            Tags
+          </h2>
+          <p className="text-ink-light text-sm">
+            Create and manage tags for organizing and discovering articles.
           </p>
         </Link>
       </div>

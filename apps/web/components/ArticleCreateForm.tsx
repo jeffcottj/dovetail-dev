@@ -7,7 +7,8 @@ import StarterKit from '@tiptap/starter-kit';
 import { apiClientFetch } from '../lib/api-client';
 import { buildTree, flattenTree } from '../lib/categories';
 import { Button } from './ui/Button';
-import type { Article, Category } from '@dovetail/types';
+import { TagPicker } from './TagPicker';
+import type { Article, Category, Tag } from '@dovetail/types';
 
 interface ArticleCreateFormProps {
   categories: Category[];
@@ -18,6 +19,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState(defaultCategoryId ?? '');
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -38,6 +40,18 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     },
   });
 
+  const assignTags = useCallback(async (articleId: string) => {
+    if (selectedTags.length === 0) return;
+    try {
+      await apiClientFetch(`/api/articles/${articleId}/tags`, {
+        method: 'POST',
+        body: JSON.stringify({ tagIds: selectedTags.map((t) => t.id) }),
+      });
+    } catch {
+      // Tag assignment is best-effort on create
+    }
+  }, [selectedTags]);
+
   const handleSave = useCallback(async () => {
     if (!editor || !title.trim() || !categoryId) return;
     setSaving(true);
@@ -51,6 +65,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
           content: editor.getJSON(),
         }),
       });
+      await assignTags(created.id);
       setStatus('Saved');
       setTimeout(() => {
         router.push(`/articles/${created.slug}`);
@@ -60,7 +75,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     } finally {
       setSaving(false);
     }
-  }, [editor, title, categoryId, router]);
+  }, [editor, title, categoryId, router, assignTags]);
 
   const handlePublish = useCallback(async () => {
     if (!editor || !title.trim() || !categoryId) return;
@@ -76,6 +91,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
           content: editor.getJSON(),
         }),
       });
+      await assignTags(created.id);
       // Then publish it
       await apiClientFetch(`/api/articles/${created.id}/publish`, {
         method: 'POST',
@@ -89,7 +105,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     } finally {
       setPublishing(false);
     }
-  }, [editor, title, categoryId, router]);
+  }, [editor, title, categoryId, router, assignTags]);
 
   const busy = saving || publishing;
   const canSubmit = title.trim().length > 0 && categoryId.length > 0 && !busy;
@@ -161,6 +177,9 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
           ))}
         </select>
       </div>
+
+      {/* Tags */}
+      <TagPicker onTagsChange={setSelectedTags} />
 
       {/* Editor */}
       <div className="tiptap-content bg-white/50 rounded-lg border border-border-light p-6 min-h-[400px]">

@@ -48,9 +48,20 @@ tagsRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req, res)
   res.status(204).end();
 });
 
-// POST /api/articles/:id/tags — assign tags to article
+// GET /api/articles/:id/tags — list tags for article
 export const articleTagsRouter: Router = Router({ mergeParams: true });
 
+articleTagsRouter.get('/', authMiddleware, async (req, res) => {
+  const articleId = req.params.id as string;
+  const result = await db
+    .select({ id: tags.id, name: tags.name, slug: tags.slug })
+    .from(articleTags)
+    .innerJoin(tags, eq(articleTags.tagId, tags.id))
+    .where(eq(articleTags.articleId, articleId));
+  res.json(result);
+});
+
+// POST /api/articles/:id/tags — assign tags to article
 articleTagsRouter.post('/', authMiddleware, requireRole('editor'), validateBody(assignTagsSchema), async (req, res) => {
   const articleId = req.params.id as string;
   const { tagIds } = req.body;
