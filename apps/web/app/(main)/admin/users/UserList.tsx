@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClientFetch } from '../../../../lib/api-client';
+import { useToast } from '../../../../lib/hooks/useToast';
 
 interface User {
   id: string;
@@ -16,8 +18,10 @@ interface User {
 const ROLES = ['viewer', 'editor', 'admin'] as const;
 
 export function UserList({ users: initialUsers }: { users: User[] }) {
+  const router = useRouter();
   const [users, setUsers] = useState(initialUsers);
   const [updating, setUpdating] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleRoleChange(userId: string, newRole: string) {
     setUpdating(userId);
@@ -27,8 +31,9 @@ export function UserList({ users: initialUsers }: { users: User[] }) {
         body: JSON.stringify({ role: newRole }),
       });
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: updated.role } : u)));
+      toast.success('Role updated');
     } catch (err) {
-      console.error('Failed to update role:', err);
+      toast.error('Failed to update role');
     } finally {
       setUpdating(null);
     }
@@ -55,7 +60,14 @@ export function UserList({ users: initialUsers }: { users: User[] }) {
         </thead>
         <tbody>
           {users.map((user) => (
-            <tr key={user.id} className="border-b border-border-light last:border-0">
+            <tr
+              key={user.id}
+              className="border-b border-border-light last:border-0 cursor-pointer hover:bg-parchment-warm/50 transition-colors"
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest('select')) return;
+                router.push(`/admin/users/${user.id}`);
+              }}
+            >
               <td className="px-4 py-3 text-sm text-ink">{user.name}</td>
               <td className="px-4 py-3 text-sm text-ink-light">{user.email}</td>
               <td className="px-4 py-3 text-sm text-ink-muted capitalize">{user.provider}</td>

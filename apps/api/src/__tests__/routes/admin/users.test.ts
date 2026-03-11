@@ -101,6 +101,43 @@ describe('Admin user routes', () => {
     });
   });
 
+  describe('GET /api/admin/users/:id/category-roles', () => {
+    it('returns 403 for non-admin', async () => {
+      const res = await supertest(app)
+        .get('/api/admin/users/u1/category-roles')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('returns category role overrides for user', async () => {
+      const mockRoles = [
+        { categoryId: 'cat-1', categoryName: 'Employment Law', role: 'editor' },
+        { categoryId: 'cat-2', categoryName: 'Housing', role: 'admin' },
+      ];
+      (db.select as Mock).mockReturnValueOnce(createChain(mockRoles));
+
+      const res = await supertest(app)
+        .get('/api/admin/users/u1/category-roles')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.categoryRoles).toHaveLength(2);
+      expect(res.body.categoryRoles[0].categoryName).toBe('Employment Law');
+      expect(res.body.categoryRoles[1].role).toBe('admin');
+    });
+
+    it('returns empty array when user has no overrides', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([]));
+
+      const res = await supertest(app)
+        .get('/api/admin/users/u1/category-roles')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.categoryRoles).toEqual([]);
+    });
+  });
+
   describe('POST /api/admin/users/:id/category-roles', () => {
     it('returns 403 for non-admin', async () => {
       const res = await supertest(app)

@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownItem } from './ui/DropdownMenu';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { apiClientFetch } from '../lib/api-client';
+import { useToast } from '../lib/hooks/useToast';
 import { buildTree, type TreeNode } from '../lib/categories';
 import type { Article, Category } from '@dovetail/types';
 
@@ -92,6 +93,7 @@ interface ArticleActionsProps {
 
 export function ArticleActions({ article, categories }: ArticleActionsProps) {
   const router = useRouter();
+  const toast = useToast();
   const [moveModalOpen, setMoveModalOpen] = useState(false);
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
@@ -114,9 +116,11 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
         body: JSON.stringify({ categoryId: selectedCategoryId }),
       });
       setMoveModalOpen(false);
+      toast.success('Article moved');
       router.refresh();
     } catch (err) {
-      setMoveError(err instanceof Error ? err.message : 'Failed to move article');
+      const msg = err instanceof Error ? err.message : 'Failed to move article';
+      setMoveError(msg);
     } finally {
       setMoving(false);
     }
@@ -130,6 +134,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
         method: 'DELETE',
       });
       setArchiveModalOpen(false);
+      toast.success('Article archived');
       router.push('/');
     } catch (err) {
       setArchiveError(err instanceof Error ? err.message : 'Failed to archive article');
@@ -226,13 +231,13 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
             variant="primary"
             size="sm"
             onClick={handleMove}
+            loading={moving}
             disabled={
-              moving ||
               !selectedCategoryId ||
               selectedCategoryId === article.categoryId
             }
           >
-            {moving ? 'Moving...' : 'Move'}
+            Move
           </Button>
         </div>
       </Modal>
@@ -269,9 +274,9 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
             variant="danger"
             size="sm"
             onClick={handleArchive}
-            disabled={archiving}
+            loading={archiving}
           >
-            {archiving ? 'Archiving...' : 'Archive'}
+            Archive
           </Button>
         </div>
       </Modal>

@@ -6,6 +6,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { apiClientFetch } from '../lib/api-client';
 import { buildTree, flattenTree } from '../lib/categories';
+import { useToast } from '../lib/hooks/useToast';
 import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
 import type { Article, Category, Tag } from '@dovetail/types';
@@ -17,12 +18,12 @@ interface ArticleCreateFormProps {
 
 export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCreateFormProps) {
   const router = useRouter();
+  const toast = useToast();
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState(defaultCategoryId ?? '');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
 
   const categoryOptions = useMemo(() => {
     const tree = buildTree(categories);
@@ -59,7 +60,6 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       return;
     }
     setSaving(true);
-    setStatus(null);
     try {
       const created = await apiClientFetch<Article>('/api/articles', {
         method: 'POST',
@@ -70,16 +70,16 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
         }),
       });
       await assignTags(created.id);
-      setStatus('Saved');
+      toast.success('Draft saved');
       setTimeout(() => {
         router.push(`/articles/${created.slug}`);
       }, 500);
     } catch {
-      setStatus('Save failed');
+      toast.error('Failed to save draft');
     } finally {
       setSaving(false);
     }
-  }, [editor, title, categoryId, router, assignTags]);
+  }, [editor, title, categoryId, router, assignTags, toast]);
 
   const handlePublish = useCallback(async () => {
     if (!editor || !title.trim()) return;
@@ -88,7 +88,6 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       return;
     }
     setPublishing(true);
-    setStatus(null);
     try {
       // Create the article as draft first
       const created = await apiClientFetch<Article>('/api/articles', {
@@ -104,16 +103,16 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       await apiClientFetch(`/api/articles/${created.id}/publish`, {
         method: 'POST',
       });
-      setStatus('Published');
+      toast.success('Article published');
       setTimeout(() => {
         router.push(`/articles/${created.slug}`);
       }, 500);
     } catch {
-      setStatus('Publish failed');
+      toast.error('Failed to publish article');
     } finally {
       setPublishing(false);
     }
-  }, [editor, title, categoryId, router, assignTags]);
+  }, [editor, title, categoryId, router, assignTags, toast]);
 
   const busy = saving || publishing;
   const canSubmit = title.trim().length > 0 && !busy;
@@ -128,29 +127,31 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
             size="md"
             onClick={handleSave}
             disabled={!canSubmit}
+            loading={saving}
           >
-            {saving ? 'Saving...' : 'Save as Draft'}
+            Save as Draft
           </Button>
           <Button
             variant="primary"
             size="md"
             onClick={handlePublish}
             disabled={!canSubmit}
+            loading={publishing}
           >
-            {publishing ? 'Publishing...' : 'Publish'}
+            Publish
           </Button>
+<<<<<<< fix/admin-content-creation-bugs
           {status && (
             <span className={`text-xs font-[family-name:var(--font-ui)] ${status === 'Saved' || status === 'Published' ? 'text-success' : 'text-danger'}`}>
               {status}
             </span>
           )}
+=======
+>>>>>>> main
         </div>
-        <button
-          onClick={() => router.back()}
-          className="font-[family-name:var(--font-ui)] text-sm text-ink-muted hover:text-ink transition-colors"
-        >
+        <Button variant="ghost" onClick={() => router.back()}>
           Cancel
-        </button>
+        </Button>
       </div>
 
       {/* Title input */}

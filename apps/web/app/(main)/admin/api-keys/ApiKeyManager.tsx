@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { apiClientFetch } from '../../../../lib/api-client';
+import { useToast } from '../../../../lib/hooks/useToast';
+import { Button } from '../../../../components/ui/Button';
 
 interface ApiKey {
   id: string;
@@ -19,6 +21,7 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -36,8 +39,14 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
         { id: result.id, name: result.name, createdBy: '', createdAt: result.createdAt, lastUsedAt: null, revokedAt: null },
       ]);
       setNewKeyName('');
+<<<<<<< fix/admin-content-creation-bugs
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create API key');
+=======
+      toast.success('API key created');
+    } catch {
+      toast.error('Failed to create API key');
+>>>>>>> main
     } finally {
       setCreating(false);
     }
@@ -50,8 +59,9 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
       setKeys((prev) =>
         prev.map((k) => (k.id === id ? { ...k, revokedAt: new Date().toISOString() } : k)),
       );
-    } catch (err) {
-      console.error('Failed to revoke key:', err);
+      toast.success('API key revoked');
+    } catch {
+      toast.error('Failed to revoke API key');
     } finally {
       setRevoking(null);
     }
@@ -61,10 +71,11 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
     <div className="space-y-8">
       <form onSubmit={handleCreate} className="flex gap-3 items-end">
         <div className="flex-1">
-          <label className="block text-xs font-[family-name:var(--font-ui)] uppercase tracking-wider text-ink-muted font-semibold mb-1">
+          <label htmlFor="api-key-name" className="block text-xs font-[family-name:var(--font-ui)] uppercase tracking-wider text-ink-muted font-semibold mb-1">
             Key name
           </label>
           <input
+            id="api-key-name"
             type="text"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
@@ -72,13 +83,9 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
             className="w-full border border-border rounded px-3 py-2 text-sm bg-parchment font-[family-name:var(--font-ui)]"
           />
         </div>
-        <button
-          type="submit"
-          disabled={creating || !newKeyName.trim()}
-          className="px-4 py-2 bg-accent text-parchment rounded text-sm font-[family-name:var(--font-ui)] font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors"
-        >
-          {creating ? 'Creating...' : 'Create Key'}
-        </button>
+        <Button type="submit" loading={creating} disabled={!newKeyName.trim()}>
+          Create Key
+        </Button>
       </form>
 
       {createError && (

@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { apiClientFetch } from '../../../../lib/api-client';
+import { useToast } from '../../../../lib/hooks/useToast';
+import { Button } from '../../../../components/ui/Button';
 import type { Tag } from '@dovetail/types';
 
 export function TagList({ initialTags }: { initialTags: Tag[] }) {
@@ -9,13 +11,12 @@ export function TagList({ initialTags }: { initialTags: Tag[] }) {
   const [newTagName, setNewTagName] = useState('');
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newTagName.trim()) return;
     setCreating(true);
-    setError(null);
     try {
       const created = await apiClientFetch<Tag>('/api/tags', {
         method: 'POST',
@@ -23,8 +24,9 @@ export function TagList({ initialTags }: { initialTags: Tag[] }) {
       });
       setTags((prev) => [...prev, created]);
       setNewTagName('');
+      toast.success('Tag created');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create tag');
+      toast.error(err instanceof Error ? err.message : 'Failed to create tag');
     } finally {
       setCreating(false);
     }
@@ -32,12 +34,12 @@ export function TagList({ initialTags }: { initialTags: Tag[] }) {
 
   async function handleDelete(id: string) {
     setDeleting(id);
-    setError(null);
     try {
       await apiClientFetch(`/api/tags/${id}`, { method: 'DELETE' });
       setTags((prev) => prev.filter((t) => t.id !== id));
+      toast.success('Tag deleted');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete tag');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete tag');
     } finally {
       setDeleting(null);
     }
@@ -47,10 +49,11 @@ export function TagList({ initialTags }: { initialTags: Tag[] }) {
     <div className="space-y-8">
       <form onSubmit={handleCreate} className="flex gap-3 items-end">
         <div className="flex-1">
-          <label className="block text-xs font-[family-name:var(--font-ui)] uppercase tracking-wider text-ink-muted font-semibold mb-1">
+          <label htmlFor="tag-name" className="block text-xs font-[family-name:var(--font-ui)] uppercase tracking-wider text-ink-muted font-semibold mb-1">
             Tag name
           </label>
           <input
+            id="tag-name"
             type="text"
             value={newTagName}
             onChange={(e) => setNewTagName(e.target.value)}
@@ -58,20 +61,10 @@ export function TagList({ initialTags }: { initialTags: Tag[] }) {
             className="w-full border border-border rounded px-3 py-2 text-sm bg-parchment font-[family-name:var(--font-ui)]"
           />
         </div>
-        <button
-          type="submit"
-          disabled={creating || !newTagName.trim()}
-          className="px-4 py-2 bg-accent text-parchment rounded text-sm font-[family-name:var(--font-ui)] font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors"
-        >
-          {creating ? 'Creating...' : 'Create Tag'}
-        </button>
+        <Button type="submit" loading={creating} disabled={!newTagName.trim()}>
+          Create Tag
+        </Button>
       </form>
-
-      {error && (
-        <div className="text-sm text-danger font-[family-name:var(--font-ui)]">
-          {error}
-        </div>
-      )}
 
       <div className="border border-border-light rounded-lg overflow-hidden">
         <table className="w-full">
