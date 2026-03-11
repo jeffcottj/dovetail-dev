@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClientFetch } from '../lib/api-client';
+import { useToast } from '../lib/hooks/useToast';
 
 export function RestoreButton({
   articleId,
@@ -12,6 +13,7 @@ export function RestoreButton({
   versionId: string;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [restoring, setRestoring] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
 
@@ -38,7 +40,9 @@ export function RestoreButton({
               { method: 'POST' },
             );
             router.refresh();
+            toast.success('Version restored');
           } catch {
+            toast.error('Failed to restore version');
             setRestoring(false);
             setConfirmed(false);
           }

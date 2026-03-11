@@ -3,3 +3,4 @@ export { Badge } from './Badge';
 export { Modal } from './Modal';
 export { DropdownMenu, DropdownItem } from './DropdownMenu';
 export { Card } from './Card';
+export { ToastProvider } from './ToastProvider';

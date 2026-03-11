@@ -12,6 +12,7 @@ import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { CategoryModal } from './CategoryModal';
 import { apiClientFetch } from '../lib/api-client';
+import { useToast } from '../lib/hooks/useToast';
 
 interface TreeItemProps {
   node: TreeNode;
@@ -29,6 +30,7 @@ function TreeItem({
   onMutationSuccess,
 }: TreeItemProps) {
   const pathname = usePathname();
+  const toast = useToast();
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const isActive = pathname === `/categories/${node.slug}`;
@@ -47,6 +49,7 @@ function TreeItem({
         method: 'DELETE',
       });
       setDeleteModalOpen(false);
+      toast.success('Category deleted');
       onMutationSuccess();
     } catch (err) {
       setDeleteError(
@@ -181,9 +184,9 @@ function TreeItem({
             variant="danger"
             size="sm"
             onClick={handleDelete}
-            disabled={deleting}
+            loading={deleting}
           >
-            {deleting ? 'Deleting...' : 'Delete'}
+            Delete
           </Button>
         </div>
       </Modal>

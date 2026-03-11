@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiClientFetch } from '../../../../lib/api-client';
+import { useToast } from '../../../../lib/hooks/useToast';
 
 interface User {
   id: string;
@@ -18,6 +19,7 @@ const ROLES = ['viewer', 'editor', 'admin'] as const;
 export function UserList({ users: initialUsers }: { users: User[] }) {
   const [users, setUsers] = useState(initialUsers);
   const [updating, setUpdating] = useState<string | null>(null);
+  const toast = useToast();
 
   async function handleRoleChange(userId: string, newRole: string) {
     setUpdating(userId);
@@ -27,8 +29,9 @@ export function UserList({ users: initialUsers }: { users: User[] }) {
         body: JSON.stringify({ role: newRole }),
       });
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: updated.role } : u)));
+      toast.success('Role updated');
     } catch (err) {
-      console.error('Failed to update role:', err);
+      toast.error('Failed to update role');
     } finally {
       setUpdating(null);
     }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { apiClientFetch } from '../lib/api-client';
+import { useToast } from '../lib/hooks/useToast';
 import { buildTree, flattenTree } from '../lib/categories';
 import type { Category } from '@dovetail/types';
 
@@ -27,6 +28,7 @@ export function CategoryModal({
   parentId,
 }: CategoryModalProps) {
   const isEditing = !!category;
+  const toast = useToast();
 
   const [name, setName] = useState('');
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
@@ -87,6 +89,7 @@ export function CategoryModal({
           }),
         });
       }
+      toast.success(isEditing ? 'Category renamed' : 'Category created');
       onSuccess();
       onClose();
     } catch (err) {
@@ -162,15 +165,10 @@ export function CategoryModal({
             type="submit"
             variant="primary"
             size="sm"
-            disabled={submitting || !name.trim()}
+            loading={submitting}
+            disabled={!name.trim()}
           >
-            {submitting
-              ? isEditing
-                ? 'Renaming...'
-                : 'Creating...'
-              : isEditing
-                ? 'Rename'
-                : 'Create'}
+            {isEditing ? 'Rename' : 'Create'}
           </Button>
         </div>
       </form>
