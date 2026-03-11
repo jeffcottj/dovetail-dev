@@ -4,6 +4,7 @@ import { FilePlus } from 'lucide-react';
 import { apiFetch } from '../../../../lib/api';
 import { RoleGate } from '../../../../components/RoleGate';
 import { Button } from '../../../../components/ui/Button';
+import { CategorySearch } from '../../../../components/CategorySearch';
 import type { Category, Article } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -53,6 +54,8 @@ export default async function CategoryPage({
           {articleList.length} {articleList.length === 1 ? 'article' : 'articles'}
         </p>
       </header>
+
+      <CategorySearch categoryId={category.id} categoryName={category.name} />
 
       {articleList.length === 0 ? (
         <div className="text-center py-12">
