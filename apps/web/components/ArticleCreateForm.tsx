@@ -53,7 +53,11 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [selectedTags]);
 
   const handleSave = useCallback(async () => {
-    if (!editor || !title.trim() || !categoryId) return;
+    if (!editor || !title.trim()) return;
+    if (!categoryId) {
+      setStatus('Please select a category');
+      return;
+    }
     setSaving(true);
     setStatus(null);
     try {
@@ -78,7 +82,11 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [editor, title, categoryId, router, assignTags]);
 
   const handlePublish = useCallback(async () => {
-    if (!editor || !title.trim() || !categoryId) return;
+    if (!editor || !title.trim()) return;
+    if (!categoryId) {
+      setStatus('Please select a category');
+      return;
+    }
     setPublishing(true);
     setStatus(null);
     try {
@@ -108,7 +116,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [editor, title, categoryId, router, assignTags]);
 
   const busy = saving || publishing;
-  const canSubmit = title.trim().length > 0 && categoryId.length > 0 && !busy;
+  const canSubmit = title.trim().length > 0 && !busy;
 
   return (
     <div>
@@ -132,7 +140,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
             {publishing ? 'Publishing...' : 'Publish'}
           </Button>
           {status && (
-            <span className={`text-xs font-[family-name:var(--font-ui)] ${status.includes('failed') ? 'text-danger' : 'text-success'}`}>
+            <span className={`text-xs font-[family-name:var(--font-ui)] ${status === 'Saved' || status === 'Published' ? 'text-success' : 'text-danger'}`}>
               {status}
             </span>
           )}

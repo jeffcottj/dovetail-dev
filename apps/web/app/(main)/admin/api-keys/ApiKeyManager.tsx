@@ -17,12 +17,14 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newKeyName.trim()) return;
     setCreating(true);
+    setCreateError(null);
     try {
       const result = await apiClientFetch<{ id: string; name: string; key: string; createdAt: string }>(
         '/api/admin/api-keys',
@@ -35,7 +37,7 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
       ]);
       setNewKeyName('');
     } catch (err) {
-      console.error('Failed to create key:', err);
+      setCreateError(err instanceof Error ? err.message : 'Failed to create API key');
     } finally {
       setCreating(false);
     }
@@ -78,6 +80,12 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
           {creating ? 'Creating...' : 'Create Key'}
         </button>
       </form>
+
+      {createError && (
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-lg text-sm text-danger font-[family-name:var(--font-ui)]">
+          {createError}
+        </div>
+      )}
 
       {createdKey && (
         <div className="bg-success/10 border border-success/30 rounded-lg p-4">

@@ -25,26 +25,35 @@ export function SidebarWrapper({ children }: SidebarWrapperProps) {
   };
 
   return (
-    <>
+    <div className="flex shrink-0">
       <aside
-        className={`shrink-0 bg-sidebar text-sidebar-text min-h-screen flex flex-col border-r border-sidebar-hover transition-[width] duration-200 ${
+        className={`bg-sidebar text-sidebar-text min-h-screen flex flex-col border-r border-sidebar-hover transition-[width] duration-200 ${
           collapsed ? 'w-0 overflow-hidden' : 'w-64'
         }`}
         style={{ opacity: mounted ? 1 : 0 }}
       >
         {children}
-      </aside>
-      <button
-        onClick={toggle}
-        className="fixed bottom-4 left-4 z-50 w-8 h-8 flex items-center justify-center rounded-lg bg-sidebar text-sidebar-text-active border border-sidebar-hover hover:bg-sidebar-hover transition-colors shadow-md"
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        {collapsed ? (
-          <PanelLeft className="w-4 h-4" />
-        ) : (
-          <PanelLeftClose className="w-4 h-4" />
+        {!collapsed && (
+          <button
+            onClick={toggle}
+            className="mt-auto p-3 border-t border-sidebar-hover flex items-center justify-center hover:bg-sidebar-hover transition-colors"
+            aria-label="Collapse sidebar"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
         )}
-      </button>
-    </>
+      </aside>
+      {collapsed && (
+        <div className="w-10 flex flex-col items-center justify-end pb-4 bg-sidebar border-r border-sidebar-hover">
+          <button
+            onClick={toggle}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-sidebar-text-active hover:bg-sidebar-hover transition-colors"
+            aria-label="Expand sidebar"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
