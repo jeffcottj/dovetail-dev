@@ -54,7 +54,11 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [selectedTags]);
 
   const handleSave = useCallback(async () => {
-    if (!editor || !title.trim() || !categoryId) return;
+    if (!editor || !title.trim()) return;
+    if (!categoryId) {
+      setStatus('Please select a category');
+      return;
+    }
     setSaving(true);
     try {
       const created = await apiClientFetch<Article>('/api/articles', {
@@ -78,7 +82,11 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [editor, title, categoryId, router, assignTags, toast]);
 
   const handlePublish = useCallback(async () => {
-    if (!editor || !title.trim() || !categoryId) return;
+    if (!editor || !title.trim()) return;
+    if (!categoryId) {
+      setStatus('Please select a category');
+      return;
+    }
     setPublishing(true);
     try {
       // Create the article as draft first
@@ -107,7 +115,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [editor, title, categoryId, router, assignTags, toast]);
 
   const busy = saving || publishing;
-  const canSubmit = title.trim().length > 0 && categoryId.length > 0 && !busy;
+  const canSubmit = title.trim().length > 0 && !busy;
 
   return (
     <div>
@@ -132,6 +140,14 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
           >
             Publish
           </Button>
+<<<<<<< fix/admin-content-creation-bugs
+          {status && (
+            <span className={`text-xs font-[family-name:var(--font-ui)] ${status === 'Saved' || status === 'Published' ? 'text-success' : 'text-danger'}`}>
+              {status}
+            </span>
+          )}
+=======
+>>>>>>> main
         </div>
         <Button variant="ghost" onClick={() => router.back()}>
           Cancel

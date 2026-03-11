@@ -19,6 +19,7 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const toast = useToast();
 
@@ -26,6 +27,7 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
     e.preventDefault();
     if (!newKeyName.trim()) return;
     setCreating(true);
+    setCreateError(null);
     try {
       const result = await apiClientFetch<{ id: string; name: string; key: string; createdAt: string }>(
         '/api/admin/api-keys',
@@ -37,9 +39,14 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
         { id: result.id, name: result.name, createdBy: '', createdAt: result.createdAt, lastUsedAt: null, revokedAt: null },
       ]);
       setNewKeyName('');
+<<<<<<< fix/admin-content-creation-bugs
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create API key');
+=======
       toast.success('API key created');
     } catch {
       toast.error('Failed to create API key');
+>>>>>>> main
     } finally {
       setCreating(false);
     }
@@ -80,6 +87,12 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
           Create Key
         </Button>
       </form>
+
+      {createError && (
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-lg text-sm text-danger font-[family-name:var(--font-ui)]">
+          {createError}
+        </div>
+      )}
 
       {createdKey && (
         <div className="bg-success/10 border border-success/30 rounded-lg p-4">
