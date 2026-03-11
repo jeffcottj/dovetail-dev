@@ -106,6 +106,29 @@ describe('Tag routes', () => {
     });
   });
 
+  describe('GET /api/articles/:id/tags', () => {
+    it('returns 401 without auth', async () => {
+      const res = await supertest(app).get('/api/articles/article-1/tags');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns tags for article', async () => {
+      const mockTags = [
+        { id: 'tag-1', name: 'Eviction', slug: 'eviction' },
+        { id: 'tag-2', name: 'Housing', slug: 'housing' },
+      ];
+      (db.select as Mock).mockReturnValue(createChain(mockTags));
+
+      const res = await supertest(app)
+        .get('/api/articles/article-1/tags')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+      expect(res.body[0].name).toBe('Eviction');
+    });
+  });
+
   describe('POST /api/articles/:id/tags', () => {
     it('returns 403 for viewer', async () => {
       const res = await supertest(app)

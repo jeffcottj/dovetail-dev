@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { apiClientFetch } from '../lib/api-client';
+import { TagPicker } from './TagPicker';
 import type { Article } from '@dovetail/types';
 
 export function ArticleEditor({ article }: { article: Article }) {
@@ -115,6 +116,9 @@ export function ArticleEditor({ article }: { article: Article }) {
         placeholder="Article title"
         className="w-full font-[family-name:var(--font-display)] text-3xl font-bold text-ink bg-transparent border-none outline-none placeholder:text-border mb-6 tracking-tight"
       />
+
+      {/* Tags */}
+      <TagPicker articleId={article.id} />
 
       {/* Editor */}
       <div className="tiptap-content bg-white/50 rounded-lg border border-border-light p-6 min-h-[400px]">
