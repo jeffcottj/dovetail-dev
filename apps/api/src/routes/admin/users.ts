@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, sql } from 'drizzle-orm';
-import { db, users, userCategoryRoles } from '@dovetail/db';
+import { db, users, userCategoryRoles, categories } from '@dovetail/db';
 import { authMiddleware } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { validateBody, validateQuery } from '../../utils/validate.js';
@@ -62,6 +62,23 @@ adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBod
   }
 
   res.json(updated);
+});
+
+// GET /api/admin/users/:id/category-roles — list category role overrides
+adminUsersRouter.get('/:id/category-roles', authMiddleware, requireRole('admin'), async (req, res) => {
+  const userId = req.params.id as string;
+
+  const categoryRoles = await db
+    .select({
+      categoryId: userCategoryRoles.categoryId,
+      categoryName: categories.name,
+      role: userCategoryRoles.role,
+    })
+    .from(userCategoryRoles)
+    .innerJoin(categories, eq(userCategoryRoles.categoryId, categories.id))
+    .where(eq(userCategoryRoles.userId, userId));
+
+  res.json({ categoryRoles });
 });
 
 // POST /api/admin/users/:id/category-roles — assign category role
