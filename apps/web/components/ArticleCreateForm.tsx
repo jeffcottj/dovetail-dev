@@ -56,7 +56,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   const handleSave = useCallback(async () => {
     if (!editor || !title.trim()) return;
     if (!categoryId) {
-      setStatus('Please select a category');
+      toast.error('Please select a category');
       return;
     }
     setSaving(true);
@@ -84,7 +84,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   const handlePublish = useCallback(async () => {
     if (!editor || !title.trim()) return;
     if (!categoryId) {
-      setStatus('Please select a category');
+      toast.error('Please select a category');
       return;
     }
     setPublishing(true);
@@ -140,14 +140,6 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
           >
             Publish
           </Button>
-<<<<<<< fix/admin-content-creation-bugs
-          {status && (
-            <span className={`text-xs font-[family-name:var(--font-ui)] ${status === 'Saved' || status === 'Published' ? 'text-success' : 'text-danger'}`}>
-              {status}
-            </span>
-          )}
-=======
->>>>>>> main
         </div>
         <Button variant="ghost" onClick={() => router.back()}>
           Cancel

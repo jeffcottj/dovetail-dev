@@ -39,14 +39,9 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
         { id: result.id, name: result.name, createdBy: '', createdAt: result.createdAt, lastUsedAt: null, revokedAt: null },
       ]);
       setNewKeyName('');
-<<<<<<< fix/admin-content-creation-bugs
+      toast.success('API key created');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create API key');
-=======
-      toast.success('API key created');
-    } catch {
-      toast.error('Failed to create API key');
->>>>>>> main
     } finally {
       setCreating(false);
     }
