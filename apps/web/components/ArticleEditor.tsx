@@ -5,15 +5,17 @@ import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { apiClientFetch } from '../lib/api-client';
+import { useToast } from '../lib/hooks/useToast';
+import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
 import type { Article } from '@dovetail/types';
 
 export function ArticleEditor({ article }: { article: Article }) {
   const router = useRouter();
+  const toast = useToast();
   const [title, setTitle] = useState(article.title);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
 
   const editor = useEditor({
     extensions: [StarterKit],
@@ -29,7 +31,6 @@ export function ArticleEditor({ article }: { article: Article }) {
   const handleSave = useCallback(async () => {
     if (!editor) return;
     setSaving(true);
-    setStatus(null);
     try {
       await apiClientFetch(`/api/articles/${article.id}`, {
         method: 'PATCH',
@@ -38,19 +39,17 @@ export function ArticleEditor({ article }: { article: Article }) {
           content: editor.getJSON(),
         }),
       });
-      setStatus('Saved');
-      setTimeout(() => setStatus(null), 2000);
+      toast.success('Draft saved');
     } catch (err) {
-      setStatus('Save failed');
+      toast.error('Failed to save draft');
     } finally {
       setSaving(false);
     }
-  }, [editor, article.id, title]);
+  }, [editor, article.id, title, toast]);
 
   const handlePublish = useCallback(async () => {
     if (!editor) return;
     setPublishing(true);
-    setStatus(null);
     try {
       // Save first
       await apiClientFetch(`/api/articles/${article.id}`, {
@@ -64,48 +63,39 @@ export function ArticleEditor({ article }: { article: Article }) {
       await apiClientFetch(`/api/articles/${article.id}/publish`, {
         method: 'POST',
       });
-      setStatus('Published');
+      toast.success('Article published');
       setTimeout(() => {
         router.push(`/articles/${article.slug}`);
       }, 500);
     } catch (err) {
-      setStatus('Publish failed');
+      toast.error('Failed to publish article');
     } finally {
       setPublishing(false);
     }
-  }, [editor, article.id, article.slug, title, router]);
+  }, [editor, article.id, article.slug, title, router, toast]);
 
   return (
     <div>
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-4 mb-6 pb-4 border-b border-border-light">
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="secondary"
             onClick={handleSave}
-            disabled={saving}
-            className="font-[family-name:var(--font-ui)] text-sm px-4 py-2 bg-ink text-parchment rounded hover:bg-ink-light transition-colors disabled:opacity-50"
+            loading={saving}
           >
-            {saving ? 'Saving...' : 'Save draft'}
-          </button>
-          <button
+            Save draft
+          </Button>
+          <Button
             onClick={handlePublish}
-            disabled={publishing}
-            className="font-[family-name:var(--font-ui)] text-sm px-4 py-2 bg-accent text-parchment rounded hover:bg-accent-hover transition-colors disabled:opacity-50"
+            loading={publishing}
           >
-            {publishing ? 'Publishing...' : 'Publish'}
-          </button>
-          {status && (
-            <span className={`text-xs font-[family-name:var(--font-ui)] ${status.includes('failed') ? 'text-danger' : 'text-success'}`}>
-              {status}
-            </span>
-          )}
+            Publish
+          </Button>
         </div>
-        <button
-          onClick={() => router.back()}
-          className="font-[family-name:var(--font-ui)] text-sm text-ink-muted hover:text-ink transition-colors"
-        >
+        <Button variant="ghost" onClick={() => router.back()}>
           Cancel
-        </button>
+        </Button>
       </div>
 
       {/* Title input */}
@@ -114,6 +104,7 @@ export function ArticleEditor({ article }: { article: Article }) {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Article title"
+        aria-label="Article title"
         className="w-full font-[family-name:var(--font-display)] text-3xl font-bold text-ink bg-transparent border-none outline-none placeholder:text-border mb-6 tracking-tight"
       />
 

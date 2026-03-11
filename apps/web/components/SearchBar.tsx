@@ -43,6 +43,7 @@ export function SearchBar() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={`Search articles... ${isMac ? '(⌘K)' : '(Ctrl+K)'}`}
+        aria-label="Search articles"
         className="w-full pl-10 pr-4 py-2 text-sm font-[family-name:var(--font-ui)] bg-parchment-warm border border-border-light rounded-lg focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 placeholder:text-ink-muted/60 text-ink transition-colors"
       />
     </form>

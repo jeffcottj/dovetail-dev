@@ -10,6 +10,9 @@ import { Button } from '../../components/ui/Button';
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
+      <a href="#main-content" className="skip-to-content">
+        Skip to content
+      </a>
       <SidebarWrapper>
         <Sidebar />
       </SidebarWrapper>
@@ -27,7 +30,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               </Link>
             </RoleGate>
         </header>
-        <main className="flex-1 p-8 max-w-4xl">{children}</main>
+        <main id="main-content" className="flex-1 p-8 max-w-4xl">{children}</main>
       </div>
     </div>
   );

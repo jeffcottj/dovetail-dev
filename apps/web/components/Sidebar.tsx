@@ -29,7 +29,7 @@ export async function Sidebar() {
         </Link>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3">
+      <nav aria-label="Categories" className="flex-1 overflow-y-auto py-3">
         <SidebarCategories categories={categories} userRole={userRole} />
       </nav>
 

@@ -141,3 +141,47 @@ body {
   border-top: 1px solid var(--color-border);
   margin: 2em 0;
 }
+
+/* Toast slide-in animation */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.2s ease-out;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spinner {
+  animation: spin 0.6s linear infinite;
+}
+
+/* Skip to content link */
+.skip-to-content {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--color-accent);
+  color: var(--color-parchment);
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+}
+
+.skip-to-content:focus {
+  left: 0;
+}
