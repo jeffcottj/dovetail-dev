@@ -93,12 +93,24 @@ packages/db/     Drizzle ORM schema, migrations, connection
 ### Local Development
 
 ```bash
-pnpm install
-docker compose up postgres -d       # Start only the database
-pnpm dev                            # Start web + API with hot reload
+# Install just first: https://github.com/casey/just
+just setup
+just dev
 ```
 
 The web app runs on `http://localhost:3000` and the API on `http://localhost:3001`.
+
+For local debugging, `.env.example` enables seeded dev auth by default. That gives you three local sign-in identities on `/login` and avoids blocking on Google/Microsoft setup while you debug locally.
+
+Common local-debug commands:
+
+```bash
+just doctor        # Check env, docker access, deps, and ports
+just db-reset      # Wipe Postgres volume, migrate, and reseed known-good data
+just logs-db       # Tail Postgres logs
+just smoke         # Repeatable read-only smoke test against the running local stack
+just smoke-ai      # Optional semantic/RAG smoke test (requires embedding config)
+```
 
 ### Running Tests
 
@@ -122,6 +134,7 @@ Migrations run automatically when the API container starts in production — no 
 The `docs/explainers/` folder contains plain-language writeups of each development phase:
 
 - [Deployment Guide](docs/explainers/deployment-guide.md) — step-by-step first-time setup
+- [Local Development And Debugging Guide](docs/explainers/local-dev-debugging.md) — practical day-to-day local setup, reset, logs, and smoke workflow
 - [Phase 1: Scaffold](docs/explainers/phase1.md) — project setup
 - [Phase 2: Database Schema](docs/explainers/phase2.md) — data model
 - [Phase 3: Authentication](docs/explainers/phase3.md) — OAuth login

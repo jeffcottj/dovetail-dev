@@ -22,18 +22,34 @@ function buildEntraProvider() {
   });
 }
 
+function buildProviders() {
+  if (provider === 'entra') {
+    if (
+      process.env.ENTRA_CLIENT_ID &&
+      process.env.ENTRA_CLIENT_SECRET &&
+      process.env.ENTRA_TENANT_ID
+    ) {
+      return [buildEntraProvider()];
+    }
+    return [];
+  }
+
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    return [
+      Google({
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      }),
+    ];
+  }
+
+  return [];
+}
+
 // Edge-safe config — no DB imports. Used by middleware.
 export const authConfig: NextAuthConfig = {
-  secret: process.env.NEXTAUTH_SECRET,
-  providers:
-    provider === 'entra'
-      ? [buildEntraProvider()]
-      : [
-          Google({
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          }),
-        ],
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  providers: buildProviders(),
   callbacks: {
     authorized({ auth }) {
       return !!auth?.user;

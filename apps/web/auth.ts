@@ -1,6 +1,5 @@
 import NextAuth, { type NextAuthResult } from 'next-auth';
 import { eq } from 'drizzle-orm';
-import { db, users } from '@dovetail/db';
 import { authConfig } from './auth.config';
 
 const nextAuth: NextAuthResult = NextAuth({
@@ -10,9 +9,11 @@ const nextAuth: NextAuthResult = NextAuth({
 
     async signIn({ user, account }) {
       if (!user.email) return false;
+      if (!account) return false;
+      const { db, users } = await import('@dovetail/db');
 
-      const provider = account?.provider === 'microsoft-entra-id' ? 'entra' : 'google';
-      const providerId = account?.providerAccountId ?? '';
+      const provider = account.provider === 'microsoft-entra-id' ? 'entra' : 'google';
+      const providerId = account.providerAccountId ?? '';
 
       const [existing] = await db
         .select({ id: users.id })
@@ -37,6 +38,7 @@ const nextAuth: NextAuthResult = NextAuth({
     async jwt({ token, account }) {
       // account is only present on first sign-in
       if (account) {
+        const { db, users } = await import('@dovetail/db');
         const [dbUser] = await db
           .select({ id: users.id, role: users.role })
           .from(users)
@@ -52,6 +54,7 @@ const nextAuth: NextAuthResult = NextAuth({
     },
 
     session({ session, token }) {
+      session.user.id = (token.userId as string) ?? (token.sub as string) ?? '';
       session.user.role = (token.role as string) ?? 'viewer';
       return session;
     },

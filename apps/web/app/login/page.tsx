@@ -1,4 +1,5 @@
 import { signIn } from '../../auth';
+import { DEV_USERS, isDevAuthEnabled } from '../../lib/dev-auth';
 
 // Must be dynamic so OAUTH_PROVIDER is read at runtime, not build time
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,15 @@ const providerId =
 
 const providerLabel =
   providerId === 'microsoft-entra-id' ? 'Microsoft' : 'Google';
+
+const hasOAuthProvider =
+  providerId === 'microsoft-entra-id'
+    ? Boolean(
+        process.env.ENTRA_CLIENT_ID &&
+        process.env.ENTRA_CLIENT_SECRET &&
+        process.env.ENTRA_TENANT_ID,
+      )
+    : Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
 function MicrosoftLogo() {
   return (
@@ -34,6 +44,8 @@ function GoogleLogo() {
 }
 
 export default function LoginPage() {
+  const devAuthEnabled = isDevAuthEnabled();
+
   return (
     <main className="min-h-screen flex items-center justify-center bg-parchment px-4">
       <div className="w-full max-w-sm">
@@ -47,20 +59,44 @@ export default function LoginPage() {
 
           <hr className="border-border-light my-6" />
 
-          <form
-            action={async () => {
-              'use server';
-              await signIn(providerId, { redirectTo: '/' });
-            }}
-          >
-            <button
-              type="submit"
-              className="w-full flex items-center justify-center gap-3 bg-accent hover:bg-accent-hover text-white font-[family-name:var(--font-ui)] font-medium py-2.5 px-4 rounded-md transition-colors cursor-pointer"
+          {devAuthEnabled ? (
+            <div className="space-y-3">
+              {Object.entries(DEV_USERS).map(([key, user]) => (
+                <form key={key} action="/api/dev/login" method="POST">
+                  <input type="hidden" name="user" value={key} />
+                  <button
+                    type="submit"
+                    className="w-full flex items-center justify-between gap-3 bg-accent hover:bg-accent-hover text-white font-[family-name:var(--font-ui)] font-medium py-2.5 px-4 rounded-md transition-colors cursor-pointer"
+                  >
+                    <span>Sign in as {user.name}</span>
+                    <span className="text-xs uppercase tracking-wide text-white/80">{user.role}</span>
+                  </button>
+                </form>
+              ))}
+              <p className="text-xs text-ink-muted font-[family-name:var(--font-ui)]">
+                Dev auth is enabled. These accounts are seeded locally and bypass external OAuth.
+              </p>
+            </div>
+          ) : hasOAuthProvider ? (
+            <form
+              action={async () => {
+                'use server';
+                await signIn(providerId, { redirectTo: '/' });
+              }}
             >
-              {providerId === 'microsoft-entra-id' ? <MicrosoftLogo /> : <GoogleLogo />}
-              Sign in with {providerLabel}
-            </button>
-          </form>
+              <button
+                type="submit"
+                className="w-full flex items-center justify-center gap-3 bg-accent hover:bg-accent-hover text-white font-[family-name:var(--font-ui)] font-medium py-2.5 px-4 rounded-md transition-colors cursor-pointer"
+              >
+                {providerId === 'microsoft-entra-id' ? <MicrosoftLogo /> : <GoogleLogo />}
+                Sign in with {providerLabel}
+              </button>
+            </form>
+          ) : (
+            <p className="text-sm text-ink-muted font-[family-name:var(--font-ui)] text-center">
+              No OAuth provider is configured for this environment.
+            </p>
+          )}
         </div>
       </div>
     </main>

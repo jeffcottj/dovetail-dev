@@ -3,9 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start",
+    "dev": "if [ -f ../../.env ]; then set -a; . ../../.env; set +a; fi; export AUTH_SECRET=\"${AUTH_SECRET:-$NEXTAUTH_SECRET}\"; ./node_modules/.bin/next dev --port 3000",
+    "build": "if [ -f ../../.env ]; then set -a; . ../../.env; set +a; fi; export AUTH_SECRET=\"${AUTH_SECRET:-$NEXTAUTH_SECRET}\"; ./node_modules/.bin/next build",
+    "start": "if [ -f ../../.env ]; then set -a; . ../../.env; set +a; fi; export AUTH_SECRET=\"${AUTH_SECRET:-$NEXTAUTH_SECRET}\"; ./node_modules/.bin/next start",
     "lint": "next lint",
     "test": "vitest run"
   },

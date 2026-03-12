@@ -2,7 +2,7 @@
   "name": "dovetail",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter './apps/*' --parallel dev",
+    "dev": "pnpm -r --parallel dev",
     "build": "pnpm --filter './packages/*' build && pnpm --filter './apps/*' build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test"
