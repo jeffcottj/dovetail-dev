@@ -5,9 +5,14 @@ const nextConfig: NextConfig = {
   env: {
     API_URL: process.env.API_URL ?? 'http://localhost:3001',
   },
-  rewrites: async () => [
-    { source: '/api/:path*', destination: `${process.env.API_URL ?? 'http://localhost:3001'}/api/:path*` },
-  ],
+  rewrites: async () => ({
+    fallback: [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.API_URL ?? 'http://localhost:3001'}/api/:path*`,
+      },
+    ],
+  }),
 };
 
 export default nextConfig;

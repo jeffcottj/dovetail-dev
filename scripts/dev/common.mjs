@@ -26,6 +26,24 @@ export function runCommand(command, args, options = {}) {
   }).trim();
 }
 
+export function getComposePortBinding(service, containerPort) {
+  try {
+    const output = runCommand('docker', ['compose', 'port', service, String(containerPort)]);
+    const trimmed = output.trim();
+    if (!trimmed) return null;
+
+    const match = trimmed.match(/^(?<host>.+):(?<port>\d+)$/);
+    if (!match?.groups) return null;
+
+    return {
+      host: match.groups.host,
+      hostPort: Number.parseInt(match.groups.port, 10),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function probePort(port) {
   await new Promise((resolve) => setImmediate(resolve));
   return new Promise((resolve) => {

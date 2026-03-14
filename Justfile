@@ -1,4 +1,4 @@
-set shell := ["bash", "-lc"]
+set shell := ["bash", "-c"]
 
 default:
   @just --list
@@ -13,10 +13,10 @@ doctor:
   node scripts/dev/doctor.mjs
 
 db-up:
-  docker compose up -d postgres --wait
+  node scripts/dev/db-up.mjs
 
 migrate:
-  pnpm --filter @dovetail/db db:migrate
+  node scripts/dev/migrate.mjs
 
 seed:
   pnpm --filter @dovetail/db db:seed
