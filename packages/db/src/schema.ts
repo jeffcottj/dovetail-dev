@@ -112,6 +112,30 @@ export const apiKeys = pgTable('api_keys', {
   revokedAt: timestamp('revoked_at'),
 });
 
+export const importStatusEnum = pgEnum('import_status', ['pending', 'running', 'completed', 'failed']);
+
+export const attachments = pgTable('attachments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  articleId: uuid('article_id').references(() => articles.id, { onDelete: 'set null' }),
+  filename: text('filename').notNull(),
+  storagePath: text('storage_path').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const importJobs = pgTable('import_jobs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  status: importStatusEnum('status').notNull().default('pending'),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  totalArticles: integer('total_articles').notNull().default(0),
+  importedCount: integer('imported_count').notNull().default(0),
+  errorLog: jsonb('error_log').notNull().default([]),
+  options: jsonb('options').notNull().default({}),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  completedAt: timestamp('completed_at'),
+});
+
 export const articleEmbeddings = pgTable('article_embeddings', {
   id: uuid('id').primaryKey().defaultRandom(),
   articleId: uuid('article_id').notNull().references(() => articles.id, { onDelete: 'cascade' }),
@@ -136,4 +160,13 @@ export const articlesRelations = relations(articles, ({ one, many }) => ({
   versions: many(articleVersions),
   articleTags: many(articleTags),
   embeddings: many(articleEmbeddings),
+  attachments: many(attachments),
+}));
+
+export const attachmentsRelations = relations(attachments, ({ one }) => ({
+  article: one(articles, { fields: [attachments.articleId], references: [articles.id] }),
+}));
+
+export const importJobsRelations = relations(importJobs, ({ one }) => ({
+  createdByUser: one(users, { fields: [importJobs.createdBy], references: [users.id] }),
 }));
