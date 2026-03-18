@@ -147,6 +147,18 @@ export default async function AdminPage() {
             Create and manage tags for organizing and discovering articles.
           </p>
         </Link>
+
+        <Link
+          href="/admin/import"
+          className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
+        >
+          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-2">
+            Import
+          </h2>
+          <p className="text-ink-light text-sm">
+            Import content from external knowledge bases.
+          </p>
+        </Link>
       </div>
     </div>
   );
