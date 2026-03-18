@@ -45,4 +45,22 @@ describe('Import admin routes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('POST /api/admin/import/execute', () => {
+    it('returns 403 for non-admin users', async () => {
+      const res = await supertest(app)
+        .post('/api/admin/import/execute')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ tempId: 'fake', options: { defaultStatus: 'draft' } });
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 400 for missing tempId', async () => {
+      const res = await supertest(app)
+        .post('/api/admin/import/execute')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ options: { defaultStatus: 'draft' } });
+      expect(res.status).toBe(400);
+    });
+  });
 });
