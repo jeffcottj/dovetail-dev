@@ -7,19 +7,19 @@ import type { Article } from '@dovetail/types';
 export default async function EditArticlePage({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slugPath: string[] }>;
 }) {
-  const { slug } = await params;
+  const { slugPath } = await params;
   const session = await auth();
   const userRole = session?.user?.role ?? 'viewer';
 
   if (userRole === 'viewer') {
-    redirect(`/articles/${slug}`);
+    redirect(`/articles/${slugPath.join('/')}`);
   }
 
   let article: Article;
   try {
-    article = await apiFetch<Article>(`/api/articles/by-slug/${slug}`);
+    article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
   } catch {
     notFound();
   }

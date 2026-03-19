@@ -9,18 +9,19 @@ import type { Article, Category, Tag } from '@dovetail/types';
 export default async function ArticlePage({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slugPath: string[] }>;
 }) {
-  const { slug } = await params;
+  const { slugPath } = await params;
   const session = await auth();
 
   let article: Article;
   try {
-    article = await apiFetch<Article>(`/api/articles/by-slug/${slug}`);
+    article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
   } catch {
     notFound();
   }
 
+  const fullPath = `/articles/${slugPath.join('/')}`;
   const userRole = session?.user?.role ?? 'viewer';
   const canEdit = userRole === 'editor' || userRole === 'admin';
 
@@ -29,7 +30,7 @@ export default async function ArticlePage({
     try {
       categories = await apiFetch<Category[]>('/api/categories');
     } catch {
-      // Categories unavailable — action menu will show empty list
+      // Categories unavailable
     }
   }
 
@@ -59,7 +60,7 @@ export default async function ArticlePage({
               </time>
               <span className="text-border">|</span>
               <Link
-                href={`/articles/${slug}/history`}
+                href={`${fullPath}/history`}
                 className="hover:text-accent transition-colors"
               >
                 View history

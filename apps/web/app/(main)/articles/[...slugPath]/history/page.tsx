@@ -15,17 +15,19 @@ interface PaginatedResponse<T> {
 export default async function VersionHistoryPage({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slugPath: string[] }>;
 }) {
-  const { slug } = await params;
+  const { slugPath } = await params;
   const session = await auth();
 
   let article: Article;
   try {
-    article = await apiFetch<Article>(`/api/articles/by-slug/${slug}`);
+    article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
   } catch {
     notFound();
   }
+
+  const fullPath = `/articles/${slugPath.join('/')}`;
 
   const { data: versions } = await apiFetch<PaginatedResponse<ArticleVersion>>(
     `/api/articles/${article.id}/versions?limit=50`,
@@ -39,7 +41,7 @@ export default async function VersionHistoryPage({
       <header className="mb-8">
         <Breadcrumbs
           segments={[
-            { label: article.title, href: `/articles/${slug}` },
+            { label: article.title, href: fullPath },
             { label: 'History' },
           ]}
         />
