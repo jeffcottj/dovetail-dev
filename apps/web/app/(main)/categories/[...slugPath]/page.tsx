@@ -2,10 +2,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { FilePlus } from 'lucide-react';
 import { apiFetch } from '../../../../lib/api';
+import { articleUrl } from '../../../../lib/article-url';
 import { RoleGate } from '../../../../components/RoleGate';
 import { Button } from '../../../../components/ui/Button';
 import { CategorySearch } from '../../../../components/CategorySearch';
-import { articleUrl } from '../../../../lib/article-url';
 import type { Category, Article } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -32,13 +32,29 @@ function StatusBadge({ status }: { status: string }) {
 export default async function CategoryPage({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slugPath: string[] }>;
 }) {
-  const { slug } = await params;
+  const { slugPath } = await params;
+  const targetSlug = slugPath[slugPath.length - 1];
 
-  // Fetch all categories to find the one matching this slug
+  // Fetch all categories to find the one matching the full path
   const categories = await apiFetch<Category[]>('/api/categories');
-  const category = categories.find((c) => c.slug === slug);
+
+  // Build a lookup to resolve the path
+  const byId = new Map(categories.map((c) => [c.id, c]));
+
+  // Find categories matching the target slug, then verify the full path
+  const candidates = categories.filter((c) => c.slug === targetSlug);
+  const category = candidates.find((c) => {
+    const path: string[] = [];
+    let current: Category | undefined = c;
+    while (current) {
+      path.unshift(current.slug);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    return path.length === slugPath.length && path.every((s, i) => s === slugPath[i]);
+  });
+
   if (!category) notFound();
 
   const { data: articleList } = await apiFetch<PaginatedResponse<Article>>(
