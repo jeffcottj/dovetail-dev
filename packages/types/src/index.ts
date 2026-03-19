@@ -25,6 +25,7 @@ export interface Article {
   title: string;
   slug: string;
   categoryId: string;
+  categoryPath?: string[];  // e.g. ["housing", "rental"]
   authorId: string;
   content: unknown; // rich text JSON (Tiptap format)
   status: ArticleStatus;

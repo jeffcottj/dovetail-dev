@@ -8,7 +8,7 @@ import { validateBody, validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 import { toSlug } from '../utils/slug.js';
 import { extractText } from '../utils/tiptap.js';
-import { resolveCategoryPath } from '../utils/category-path.js';
+import { resolveCategoryPath, buildCategoryPath } from '../utils/category-path.js';
 import { resolveRole, hasMinimumRole } from '../services/permissions.js';
 import { generateEmbeddings } from '../services/embedding-pipeline.js';
 import type { Role } from '@dovetail/types';
@@ -58,7 +58,15 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (_
     .limit(limit)
     .offset(offset);
 
-  res.json(paginate(data, Number(total), { page, limit }));
+  // Enrich with category paths
+  const enriched = await Promise.all(
+    data.map(async (article) => ({
+      ...article,
+      categoryPath: await buildCategoryPath(article.categoryId),
+    })),
+  );
+
+  res.json(paginate(enriched, Number(total), { page, limit }));
 });
 
 // GET /api/articles/by-path/* — resolve article via category path + article slug
@@ -93,7 +101,8 @@ articlesRouter.get('/by-path/{*path}', authMiddleware, async (req, res) => {
     return;
   }
 
-  res.json(article);
+  const categoryPath = await buildCategoryPath(article.categoryId);
+  res.json({ ...article, categoryPath });
 });
 
 // GET /api/articles/:id
@@ -104,7 +113,8 @@ articlesRouter.get('/:id', authMiddleware, async (req, res) => {
     res.status(404).json({ error: 'Article not found' });
     return;
   }
-  res.json(article);
+  const categoryPath = await buildCategoryPath(article.categoryId);
+  res.json({ ...article, categoryPath });
 });
 
 // POST /api/articles — create draft

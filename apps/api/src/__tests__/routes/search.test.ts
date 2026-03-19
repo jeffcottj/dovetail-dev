@@ -18,6 +18,11 @@ vi.mock('@dovetail/db', async (importOriginal) => {
   };
 });
 
+vi.mock('../../utils/category-path.js', () => ({
+  resolveCategoryPath: vi.fn(),
+  buildCategoryPath: vi.fn().mockResolvedValue(['mock-category']),
+}));
+
 // Mock embedding service for semantic search tests
 vi.mock('../../services/embeddings.js', () => ({
   createEmbeddingProvider: vi.fn(() => ({

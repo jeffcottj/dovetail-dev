@@ -18,6 +18,11 @@ vi.mock('@dovetail/db', async (importOriginal) => {
   };
 });
 
+vi.mock('../../utils/category-path.js', () => ({
+  resolveCategoryPath: vi.fn(),
+  buildCategoryPath: vi.fn().mockResolvedValue(['mock-category']),
+}));
+
 // Mock embedding service
 vi.mock('../../services/embeddings.js', () => ({
   createEmbeddingProvider: vi.fn(() => ({
@@ -105,7 +110,8 @@ describe('RAG search endpoint', () => {
       expect(res.body.results[0]).toEqual({
         articleId: '00000000-0000-4000-8000-000000000010',
         articleTitle: 'Notice Requirements',
-        articleUrl: '/articles/notice-requirements',
+        articleUrl: '/articles/mock-category/notice-requirements',
+        categoryPath: ['mock-category'],
         chunkText: 'Tenants have the right to...',
         score: 0.94,
       });

@@ -5,6 +5,7 @@ import { db } from '@dovetail/db';
 import { apiKeyAuth } from '../middleware/apiKeyAuth.js';
 import { validateBody } from '../utils/validate.js';
 import { createEmbeddingProvider } from '../services/embeddings.js';
+import { buildCategoryPath } from '../utils/category-path.js';
 
 export const ragRouter: Router = Router();
 
@@ -30,7 +31,7 @@ ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req,
   const results = await db.execute(sql`
     SELECT ae.article_id, ae.chunk_text, ae.chunk_index,
            1 - (ae.embedding <=> ${vectorLiteral}::vector) AS similarity,
-           a.title, a.slug
+           a.title, a.slug, a.category_id
     FROM article_embeddings ae
     JOIN articles a ON a.id = ae.article_id
     WHERE a.status = 'published' ${categoryFilter}
@@ -38,13 +39,19 @@ ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req,
     LIMIT ${limit}
   `);
 
-  const formatted = (results as any[]).map((r) => ({
-    articleId: r.article_id,
-    articleTitle: r.title,
-    articleUrl: `/articles/${r.slug}`,
-    chunkText: r.chunk_text,
-    score: parseFloat(r.similarity),
-  }));
+  const formatted = await Promise.all(
+    (results as any[]).map(async (r) => {
+      const categoryPath = await buildCategoryPath(r.category_id);
+      return {
+        articleId: r.article_id,
+        articleTitle: r.title,
+        articleUrl: `/articles/${categoryPath.join('/')}/${r.slug}`,
+        categoryPath,
+        chunkText: r.chunk_text,
+        score: parseFloat(r.similarity),
+      };
+    }),
+  );
 
   res.json({ results: formatted });
 });
