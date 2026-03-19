@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';
-import { db, articles } from '@dovetail/db';
+import { db, articles, importJobs } from '@dovetail/db';
 import { authMiddleware } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { validateBody } from '../../utils/validate.js';
@@ -23,7 +23,6 @@ bulkPublishRouter.post(
 
     let whereClause;
     if (importJobId) {
-      const { importJobs } = await import('@dovetail/db');
       const [job] = await db.select().from(importJobs).where(eq(importJobs.id, importJobId));
       if (!job) {
         res.status(404).json({ error: 'Import job not found' });
