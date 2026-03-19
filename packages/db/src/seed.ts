@@ -202,7 +202,9 @@ async function runSeed() {
     articleTags,
     articleVersions,
     articles,
+    attachments,
     categories,
+    importJobs,
     tags,
     userCategoryRoles,
     users,
@@ -215,8 +217,10 @@ async function runSeed() {
     await tx.delete(articleEmbeddings);
     await tx.delete(articleTags);
     await tx.delete(articleVersions);
+    await tx.delete(attachments);
     await tx.delete(apiKeys);
     await tx.delete(articles);
+    await tx.delete(importJobs);
     await tx.delete(userCategoryRoles);
     await tx.delete(tags);
     await tx.delete(categories);
