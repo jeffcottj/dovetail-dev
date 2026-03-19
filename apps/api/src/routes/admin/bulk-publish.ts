@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, gte } from 'drizzle-orm';
 import { db, articles, importJobs } from '@dovetail/db';
 import { authMiddleware } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -18,26 +18,35 @@ bulkPublishRouter.post(
   requireRole('admin'),
   validateBody(bulkPublishSchema),
   async (req, res) => {
-    const { importJobId } = req.body;
-    const now = new Date();
+    try {
+      const { importJobId } = req.body;
+      const now = new Date();
 
-    let whereClause;
-    if (importJobId) {
-      const [job] = await db.select().from(importJobs).where(eq(importJobs.id, importJobId));
-      if (!job) {
-        res.status(404).json({ error: 'Import job not found' });
-        return;
+      let whereClause;
+      if (importJobId) {
+        const [job] = await db.select().from(importJobs).where(eq(importJobs.id, importJobId));
+        if (!job) {
+          res.status(404).json({ error: 'Import job not found' });
+          return;
+        }
+        whereClause = and(
+          eq(articles.status, 'draft'),
+          eq(articles.authorId, job.createdBy),
+          gte(articles.createdAt, job.createdAt),
+        );
+      } else {
+        whereClause = eq(articles.status, 'draft');
       }
-      whereClause = sql`${articles.status} = 'draft' AND ${articles.authorId} = ${job.createdBy} AND ${articles.createdAt} >= ${job.createdAt}`;
-    } else {
-      whereClause = eq(articles.status, 'draft');
+
+      const updated = await db.update(articles)
+        .set({ status: 'published', publishedAt: now, updatedAt: now })
+        .where(whereClause)
+        .returning({ id: articles.id });
+
+      res.json({ published: updated.length });
+    } catch (err) {
+      console.error('[bulk-publish] Error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-
-    const updated = await db.update(articles)
-      .set({ status: 'published', publishedAt: now, updatedAt: now })
-      .where(whereClause)
-      .returning({ id: articles.id });
-
-    res.json({ published: updated.length });
   },
 );
