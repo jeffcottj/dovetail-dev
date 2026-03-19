@@ -154,8 +154,8 @@ export const articleEmbeddings = pgTable('article_embeddings', {
 // -- Relations (for Drizzle's query builder) --
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
-  parent: one(categories, { fields: [categories.parentId], references: [categories.id] }),
-  children: many(categories),
+  parent: one(categories, { fields: [categories.parentId], references: [categories.id], relationName: 'categoryParent' }),
+  children: many(categories, { relationName: 'categoryParent' }),
   articles: many(articles),
   userRoles: many(userCategoryRoles),
 }));
@@ -171,6 +171,41 @@ export const articlesRelations = relations(articles, ({ one, many }) => ({
 
 export const attachmentsRelations = relations(attachments, ({ one }) => ({
   article: one(articles, { fields: [attachments.articleId], references: [articles.id] }),
+}));
+
+export const usersRelations = relations(users, ({ many }) => ({
+  articles: many(articles),
+  articleVersions: many(articleVersions),
+  apiKeys: many(apiKeys),
+  categoryRoles: many(userCategoryRoles),
+  importJobs: many(importJobs),
+}));
+
+export const articleVersionsRelations = relations(articleVersions, ({ one }) => ({
+  article: one(articles, { fields: [articleVersions.articleId], references: [articles.id] }),
+  author: one(users, { fields: [articleVersions.authorId], references: [users.id] }),
+}));
+
+export const articleTagsRelations = relations(articleTags, ({ one }) => ({
+  article: one(articles, { fields: [articleTags.articleId], references: [articles.id] }),
+  tag: one(tags, { fields: [articleTags.tagId], references: [tags.id] }),
+}));
+
+export const tagsRelations = relations(tags, ({ many }) => ({
+  articleTags: many(articleTags),
+}));
+
+export const articleEmbeddingsRelations = relations(articleEmbeddings, ({ one }) => ({
+  article: one(articles, { fields: [articleEmbeddings.articleId], references: [articles.id] }),
+}));
+
+export const userCategoryRolesRelations = relations(userCategoryRoles, ({ one }) => ({
+  user: one(users, { fields: [userCategoryRoles.userId], references: [users.id] }),
+  category: one(categories, { fields: [userCategoryRoles.categoryId], references: [categories.id] }),
+}));
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  createdByUser: one(users, { fields: [apiKeys.createdBy], references: [users.id] }),
 }));
 
 export const importJobsRelations = relations(importJobs, ({ one }) => ({

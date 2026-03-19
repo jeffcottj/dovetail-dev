@@ -194,14 +194,6 @@ export class ImportEngine {
     const plainText = extractText(content);
     const slug = art.slug || toSlug(art.title);
 
-    // Check for duplicate slug
-    const existingArticle = await db.select({ id: articles.id })
-      .from(articles)
-      .where(eq(articles.slug, slug));
-    if (existingArticle.length > 0) {
-      throw new Error(`Article with slug "${slug}" already exists — skipping`);
-    }
-
     // Insert article
     const now = new Date();
     const publishedAt = this.opts.defaultStatus === 'published' ? now : null;

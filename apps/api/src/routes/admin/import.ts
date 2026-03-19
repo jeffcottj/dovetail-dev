@@ -104,7 +104,7 @@ importRouter.post(
       });
     } catch (err: any) {
       await cleanupDir(extractDir);
-      res.status(400).json({ error: `Failed to parse export: ${err.message}` });
+      res.status(400).json({ error: 'The uploaded file could not be processed. Please ensure it is a valid ZIP file containing an export.' });
     }
   },
 );

@@ -32,7 +32,7 @@ bulkPublishRouter.post(
         whereClause = and(
           eq(articles.status, 'draft'),
           eq(articles.authorId, job.createdBy),
-          gte(articles.createdAt, job.createdAt),
+          gte(articles.updatedAt, job.createdAt),
         );
       } else {
         whereClause = eq(articles.status, 'draft');

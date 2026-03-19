@@ -90,7 +90,7 @@ In Drizzle Studio, confirm:
 
 On the Preview step, verify:
 
-- **Articles** count matches the number of entries in `sample-import/assets/data.json` (should be 349)
+- **Articles** count matches the number of entries in `sample-import/assets/data.json` (should be 338)
 - **Categories** count is greater than 10
 - **Attachments** count reflects files under `sample-import/assets/images/`
 
