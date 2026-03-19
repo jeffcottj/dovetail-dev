@@ -5,6 +5,7 @@ import { apiFetch } from '../../../../lib/api';
 import { RoleGate } from '../../../../components/RoleGate';
 import { Button } from '../../../../components/ui/Button';
 import { CategorySearch } from '../../../../components/CategorySearch';
+import { articleUrl } from '../../../../lib/article-url';
 import type { Category, Article } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -76,7 +77,7 @@ export default async function CategoryPage({
           {articleList.map((article) => (
             <li key={article.id}>
               <Link
-                href={`/articles/${article.slug}`}
+                href={articleUrl(article)}
                 className="block px-4 py-4 -mx-4 rounded-lg hover:bg-parchment-warm transition-colors duration-150 group"
               >
                 <div className="flex items-start justify-between gap-4">

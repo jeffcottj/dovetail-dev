@@ -10,6 +10,7 @@ import { Button } from './ui/Button';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
 import { buildTree, type TreeNode } from '../lib/categories';
+import { articleUrl } from '../lib/article-url';
 import type { Article, Category } from '@dovetail/types';
 
 function CategoryTreeItem({
@@ -146,7 +147,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
   return (
     <div className="flex items-center gap-2 shrink-0">
       <Link
-        href={`/articles/${article.slug}/edit`}
+        href={`${articleUrl(article)}/edit`}
         className="inline-flex items-center gap-1.5 font-[family-name:var(--font-ui)] text-sm px-4 py-2 bg-accent text-parchment rounded hover:bg-accent-hover transition-colors font-medium"
       >
         <Pencil className="w-3.5 h-3.5" />

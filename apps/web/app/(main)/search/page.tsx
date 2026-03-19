@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
 import { SearchFilters } from '../../../components/SearchFilters';
 import { Badge } from '../../../components/ui/Badge';
+import { articleUrl } from '../../../lib/article-url';
 import type { Category } from '@dovetail/types';
 
 interface SearchResult {
@@ -11,6 +12,7 @@ interface SearchResult {
   title: string;
   slug: string;
   categoryId: string;
+  categoryPath?: string[];
   authorId: string;
   status: string;
   createdAt: string;
@@ -160,7 +162,7 @@ export default async function SearchPage({
             {results.data.map((result) => (
               <li key={result.id}>
                 <Link
-                  href={`/articles/${result.slug}`}
+                  href={articleUrl(result)}
                   className="block px-4 py-4 -mx-4 rounded-lg hover:bg-parchment-warm transition-colors duration-150 group"
                 >
                   <div className="flex items-start justify-between gap-4">
