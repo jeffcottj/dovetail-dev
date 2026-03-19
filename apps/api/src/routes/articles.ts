@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, articles, articleVersions } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
@@ -8,6 +8,7 @@ import { validateBody, validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 import { toSlug } from '../utils/slug.js';
 import { extractText } from '../utils/tiptap.js';
+import { resolveCategoryPath } from '../utils/category-path.js';
 import { resolveRole, hasMinimumRole } from '../services/permissions.js';
 import { generateEmbeddings } from '../services/embedding-pipeline.js';
 import type { Role } from '@dovetail/types';
@@ -60,14 +61,38 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (_
   res.json(paginate(data, Number(total), { page, limit }));
 });
 
-// GET /api/articles/by-slug/:slug — must be before /:id to avoid matching "by-slug" as an id
-articlesRouter.get('/by-slug/:slug', authMiddleware, async (req, res) => {
-  const slug = req.params.slug as string;
-  const [article] = await db.select().from(articles).where(eq(articles.slug, slug));
+// GET /api/articles/by-path/* — resolve article via category path + article slug
+articlesRouter.get('/by-path/{*path}', authMiddleware, async (req, res) => {
+  const pathParam = (req.params as any).path;
+  // Express 5 wildcard params may be a string or array depending on path-to-regexp version
+  const segments = Array.isArray(pathParam)
+    ? pathParam.filter(Boolean)
+    : String(pathParam).split('/').filter(Boolean);
+
+  if (segments.length < 2) {
+    res.status(400).json({ error: 'Path must include at least a category and article slug' });
+    return;
+  }
+
+  const categorySegments = segments.slice(0, -1);
+  const articleSlug = segments[segments.length - 1];
+
+  const categoryId = await resolveCategoryPath(categorySegments);
+  if (!categoryId) {
+    res.status(404).json({ error: 'Category not found' });
+    return;
+  }
+
+  const [article] = await db
+    .select()
+    .from(articles)
+    .where(and(eq(articles.slug, articleSlug), eq(articles.categoryId, categoryId)));
+
   if (!article) {
     res.status(404).json({ error: 'Article not found' });
     return;
   }
+
   res.json(article);
 });
 

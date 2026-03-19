@@ -18,8 +18,14 @@ vi.mock('@dovetail/db', async (importOriginal) => {
   };
 });
 
+vi.mock('../../utils/category-path.js', () => ({
+  resolveCategoryPath: vi.fn(),
+  buildCategoryPath: vi.fn(),
+}));
+
 import { app } from '../../app.js';
 import { db } from '@dovetail/db';
+import { resolveCategoryPath } from '../../utils/category-path.js';
 
 const CAT_ID = '00000000-0000-4000-8000-000000000001';
 const ART_ID = '00000000-0000-4000-8000-000000000010';
@@ -96,12 +102,13 @@ describe('Article routes', () => {
     });
   });
 
-  describe('GET /api/articles/by-slug/:slug', () => {
-    it('returns article by slug', async () => {
+  describe('GET /api/articles/by-path/*', () => {
+    it('returns article by category path and slug', async () => {
+      (resolveCategoryPath as Mock).mockResolvedValueOnce(CAT_ID);
       (db.select as Mock).mockReturnValue(createChain([mockArticle]));
 
       const res = await supertest(app)
-        .get('/api/articles/by-slug/test-article')
+        .get('/api/articles/by-path/housing/test-article')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
