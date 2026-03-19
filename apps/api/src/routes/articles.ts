@@ -205,7 +205,17 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
     const newContent = req.body.content ?? current.content;
     updates.plainText = extractText(newContent);
 
-    const [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+    let updated;
+    try {
+      [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+    } catch (err: any) {
+      if (err.code === '23505' && err.constraint_name?.includes('slug')) {
+        updates.slug = `${updates.slug}-${Date.now().toString(36)}`;
+        [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+      } else {
+        throw err;
+      }
+    }
     result = updated;
   });
 
