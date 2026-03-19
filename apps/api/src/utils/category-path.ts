@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db, categories } from '@dovetail/db';
 
 /**
@@ -13,11 +13,11 @@ export async function resolveCategoryPath(slugSegments: string[]): Promise<strin
   let parentId: string | null = null;
 
   for (const slug of slugSegments) {
-    const parentCondition = parentId
+    const parentCondition: SQL = parentId
       ? sql`${categories.parentId} = ${parentId}`
       : sql`${categories.parentId} IS NULL`;
 
-    const result = await db.execute(sql`
+    const result: any[] = await db.execute(sql`
       SELECT ${categories.id}
       FROM ${categories}
       WHERE ${categories.slug} = ${slug}
