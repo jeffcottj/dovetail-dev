@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -48,10 +49,13 @@ export const users = pgTable('users', {
 export const categories = pgTable('categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  slug: text('slug').notNull().unique(),
+  slug: text('slug').notNull(),
   parentId: uuid('parent_id'),  // references categories.id — added below via relations
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex('categories_slug_parent_id_unique')
+    .on(t.slug, sql`COALESCE(${t.parentId}, '00000000-0000-0000-0000-000000000000')`),
+]);
 
 export const userCategoryRoles = pgTable(
   'user_category_roles',
@@ -66,7 +70,7 @@ export const userCategoryRoles = pgTable(
 export const articles = pgTable('articles', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
-  slug: text('slug').notNull().unique(),
+  slug: text('slug').notNull(),
   categoryId: uuid('category_id').notNull().references(() => categories.id),
   authorId: uuid('author_id').notNull().references(() => users.id),
   content: jsonb('content').notNull().default({}),
@@ -75,7 +79,9 @@ export const articles = pgTable('articles', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   publishedAt: timestamp('published_at'),
-});
+}, (t) => [
+  uniqueIndex('articles_slug_category_id_unique').on(t.slug, t.categoryId),
+]);
 
 export const articleVersions = pgTable('article_versions', {
   id: uuid('id').primaryKey().defaultRandom(),
