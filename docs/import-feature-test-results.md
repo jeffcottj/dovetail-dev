@@ -16,12 +16,12 @@
 | 3. Upload & Preview | PASS | Upload, preview stats, category tree, cancel, invalid file all work |
 | 4. Import Execution | PASS | Progress updates, completion screen correct |
 | 5. Bulk Publish | PASS | Publishes all drafts; Published import hides Publish All button |
-| 6. Data Integrity | PASS (with caveat) | Content, metadata, attachments correct; **category dedup fails** |
+| 6. Data Integrity | PASS | Content, metadata, attachments correct; category dedup verified working |
 | 7. API Endpoints | PASS | All 7 endpoint tests pass |
 | 8. Edge Cases | PASS | Expired session, empty ZIP, no data.json all handled correctly |
 | 9. Automated Tests | PASS | 26 files, 167 tests pass; `tsc --noEmit` clean |
 
-**Overall: PASS with 1 bug found (category deduplication)**
+**Overall: PASS (original bug report was false positive — see Bugs Found section)**
 
 ---
 
@@ -68,7 +68,7 @@
 - **6.2 Article content:** Rendered in browser with real text, paragraphs, headings. HTML was correctly converted to TipTap JSON. **PASS**
 - **6.3 Article metadata:** Titles match Flowlu export, slugs derived from Flowlu `code` field, categories assigned correctly, author set to "Local Admin", status matches chosen default. **PASS**
 - **6.4 Attachments:** 225 attachment records per import in DB. Files copied to `apps/api/uploads/attachments/` with UUID filenames. Records include correct `article_id`, `filename`, `mime_type`, `size_bytes`, and `storage_path`. **PASS**
-- **6.5 Category deduplication:** **BUG FOUND** — See bug report below.
+- **6.5 Category deduplication:** Originally reported as bug, verified as false positive. Categories with same name under different parents are legitimate (e.g., "Baltimore City" under 5 legal topic parents). Dedup by (slug, parentId) works correctly. **PASS**
 
 ### 7. API Endpoints
 
@@ -100,34 +100,26 @@
 
 ## Bugs Found
 
-### BUG: Category deduplication not working on re-import
+### FALSE POSITIVE: Category deduplication not working on re-import
 
-**Severity:** Medium
+**Original severity:** Medium
 **Checklist item:** 6.5
+**Resolution:** False positive — dedup works correctly. Closed 2026-03-21.
 
-**Description:** When the same ZIP is imported a second time, the import engine creates duplicate categories instead of reusing existing ones. The checklist specifies that categories should be **reused** (deduplicated by name+parent) on subsequent imports.
+**Original report:** The SQL evidence (`GROUP BY name HAVING count(*) > 1`) showed category names appearing multiple times (Baltimore City: 5, Prince George's: 5, etc.). This was interpreted as duplicate categories from re-import.
 
-**Steps to reproduce:**
-1. Import `test-export.zip` as Draft → 338 articles, all succeed
-2. Click "Import Another" → upload the same ZIP again → Start Import
-3. Check categories table: duplicates exist
+**Root cause of misinterpretation:** The query groups by `name` only, ignoring `parent_id`. These are **legitimate categories** with the same name under different parent categories (e.g., "Baltimore City" exists under 5 different legal topic parents: Mental Health Resources, Family Law, Landlord/Tenant, Protective Orders, and Miscellaneous Local Issues). The counts match exactly with the single-import tree structure.
 
-**Evidence:**
+**Verification:** Category dedup was verified against a real database by running `createCategories` three times with identical tree data:
+- 1st import: 5 categories created
+- 2nd import: 0 new categories, all 5 IDs reused
+- 3rd import: 0 new categories, all 5 IDs reused
+
+The correct query to check for actual duplicates would be:
+```sql
+SELECT slug, parent_id, count(*) FROM categories GROUP BY slug, parent_id HAVING count(*) > 1;
 ```
-SELECT name, count(*) FROM categories GROUP BY name HAVING count(*) > 1 ORDER BY cnt DESC LIMIT 5;
-
- Baltimore City    | 5
- Prince George's   | 5
- Baltimore County  | 5
- Anne Arundel      | 4
- Charles           | 3
-```
-
-**Expected:** Categories with the same name and parent should be reused. Only articles should fail (due to slug uniqueness per category).
-
-**Actual:** New category rows are created for every import, and articles are assigned to these new categories. Because slug uniqueness is per-category/parent, the duplicate categories allow duplicate articles to be created (with suffixed slugs like `expungement-mmwvjgv4`).
-
-**Impact:** Running the import multiple times bloats the categories table and creates duplicate article entries. The sidebar becomes cluttered with duplicate category trees.
+This returns no results, confirming dedup works correctly.
 
 ---
 

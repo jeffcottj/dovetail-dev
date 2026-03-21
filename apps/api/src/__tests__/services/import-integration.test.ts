@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseDataJson, buildCategoryTree } from '../../services/import/flowlu-parser.js';
+import { parseDataJson, buildCategoryTree, type CategoryNode } from '../../services/import/flowlu-parser.js';
 import { extractArticleBody, extractDateModified } from '../../services/import/html-extractor.js';
 import { htmlToTiptap } from '../../services/import/html-to-tiptap.js';
+import { toSlug } from '../../utils/slug.js';
 
 const SAMPLE_DIR = path.resolve(__dirname, '../../../../../sample-import');
 
@@ -50,5 +51,52 @@ describe('Import integration (sample data)', () => {
     // Should contain paragraphs
     const paragraphs = tiptap.content.filter((n: any) => n.type === 'paragraph');
     expect(paragraphs.length).toBeGreaterThan(0);
+  });
+
+  it('has no slug+parent collisions in the category tree (dedup would work)', () => {
+    const json = fs.readFileSync(path.join(SAMPLE_DIR, 'assets', 'data.json'), 'utf-8');
+    const articles = parseDataJson(json);
+    const tree = buildCategoryTree(articles);
+
+    // Collect all (slug, parentPath) tuples — simulates what createCategories would see
+    function collectSlugs(nodes: CategoryNode[], parentPath = ''): string[] {
+      const keys: string[] = [];
+      for (const node of nodes) {
+        const slug = toSlug(node.name);
+        const key = `${slug}|${parentPath}`;
+        keys.push(key);
+        keys.push(...collectSlugs(node.children, `${parentPath}/${slug}`));
+      }
+      return keys;
+    }
+
+    const allKeys = collectSlugs(tree);
+    const uniqueKeys = new Set(allKeys);
+
+    // Every (slug, parent) combo must be unique for dedup to work
+    expect(allKeys.length).toBe(uniqueKeys.size);
+    // All 338 articles become category nodes
+    expect(allKeys.length).toBe(articles.length);
+  });
+
+  it('same-name categories exist under different parents (not duplicates)', () => {
+    const json = fs.readFileSync(path.join(SAMPLE_DIR, 'assets', 'data.json'), 'utf-8');
+    const articles = parseDataJson(json);
+    const tree = buildCategoryTree(articles);
+
+    // Find all occurrences of "Baltimore City" in the tree with their parent paths
+    function findByName(nodes: CategoryNode[], name: string, parentPath = ''): string[] {
+      const paths: string[] = [];
+      for (const node of nodes) {
+        if (node.name === name) paths.push(parentPath || '(root)');
+        paths.push(...findByName(node.children, name, `${parentPath}/${node.name}`));
+      }
+      return paths;
+    }
+
+    const bcPaths = findByName(tree, 'Baltimore City');
+    // "Baltimore City" appears multiple times but always under different parents
+    expect(bcPaths.length).toBeGreaterThan(1);
+    expect(new Set(bcPaths).size).toBe(bcPaths.length); // all unique parent paths
   });
 });
