@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { LogOut, Settings } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
+import { ThemeToggle } from './ThemeToggle';
 
 export function UserMenu() {
   const { user, isAdmin, isLoading, isAuthenticated } = useCurrentUser();
@@ -46,6 +47,7 @@ export function UserMenu() {
       </div>
 
       <div className="flex items-center gap-2">
+        <ThemeToggle />
         {isAdmin && (
           <Link
             href="/admin"

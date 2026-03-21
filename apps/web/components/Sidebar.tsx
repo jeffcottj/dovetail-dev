@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { apiFetch } from '../lib/api';
 import { auth } from '../auth';
 import type { Category, Role } from '@dovetail/types';
@@ -18,14 +19,16 @@ export async function Sidebar() {
 
   return (
     <>
-      <div className="p-5 border-b border-sidebar-hover">
+      <div className="p-4 border-b border-sidebar-hover">
         <Link href="/" className="block">
-          <h1 className="font-[family-name:var(--font-display)] text-xl font-bold text-sidebar-text-active tracking-tight">
-            Dovetail
-          </h1>
-          <span className="text-xs text-sidebar-text/60 font-[family-name:var(--font-ui)] uppercase tracking-widest">
-            Knowledge Base
-          </span>
+          <Image
+            src="/logos/mla-secondary-white.png"
+            alt="Maryland Legal Aid"
+            width={220}
+            height={92}
+            className="w-full h-auto"
+            priority
+          />
         </Link>
       </div>
 

@@ -121,7 +121,7 @@ export function TagPicker({ articleId, initialTags = [], onTagsChange }: TagPick
           }}
           onFocus={() => setOpen(true)}
           placeholder="Add a tag..."
-          className="w-full font-[family-name:var(--font-ui)] text-sm text-ink bg-white/50 border border-border-light rounded px-3 py-2 outline-none focus:border-accent transition-colors"
+          className="w-full font-[family-name:var(--font-ui)] text-sm text-ink bg-parchment-warm border border-border-light rounded px-3 py-2 outline-none focus:border-accent transition-colors"
         />
         {open && filtered.length > 0 && (
           <ul className="absolute z-10 mt-1 w-full bg-parchment border border-border-light rounded-lg shadow-lg max-h-48 overflow-y-auto">

@@ -113,7 +113,7 @@ export function ArticleEditor({ article }: { article: Article }) {
       <TagPicker articleId={article.id} />
 
       {/* Editor */}
-      <div className="tiptap-content bg-white/50 rounded-lg border border-border-light p-6 min-h-[400px]">
+      <div className="tiptap-content bg-parchment-warm rounded-lg border border-border-light p-6 min-h-[400px]">
         {editor ? (
           <EditorContent editor={editor} />
         ) : (

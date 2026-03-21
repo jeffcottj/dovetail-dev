@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, type ReactNode } from 'react';
+import Image from 'next/image';
 import { PanelLeftClose, PanelLeft } from 'lucide-react';
+import { ThemeToggle } from './ThemeToggle';
 
 const STORAGE_KEY = 'dovetail-sidebar-collapsed';
 
@@ -44,7 +46,15 @@ export function SidebarWrapper({ children }: SidebarWrapperProps) {
         )}
       </aside>
       {collapsed && (
-        <div className="w-10 flex flex-col items-center justify-end pb-4 bg-sidebar border-r border-sidebar-hover">
+        <div className="w-10 flex flex-col items-center pt-3 pb-4 bg-sidebar border-r border-sidebar-hover">
+          <Image
+            src="/logos/mla-mark-white.png"
+            alt="Maryland Legal Aid"
+            width={24}
+            height={40}
+            className="w-6 h-auto mb-auto"
+          />
+          <ThemeToggle />
           <button
             onClick={toggle}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-sidebar-text-active hover:bg-sidebar-hover transition-colors"

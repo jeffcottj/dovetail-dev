@@ -96,7 +96,7 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
       </div>
 
       <section>
-        <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-4">
+        <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-4">
           Category Role Overrides
         </h2>
         <p className="text-ink-light text-sm mb-4 font-[family-name:var(--font-ui)]">

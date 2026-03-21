@@ -169,7 +169,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
           id="category-select"
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
-          className="w-full max-w-md font-[family-name:var(--font-ui)] text-sm text-ink bg-white/50 border border-border-light rounded px-3 py-2 outline-none focus:border-accent transition-colors"
+          className="w-full max-w-md font-[family-name:var(--font-ui)] text-sm text-ink bg-parchment-warm border border-border-light rounded px-3 py-2 outline-none focus:border-accent transition-colors"
         >
           <option value="">Select a category...</option>
           {categoryOptions.map((opt) => (
@@ -184,7 +184,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       <TagPicker onTagsChange={setSelectedTags} />
 
       {/* Editor */}
-      <div className="tiptap-content bg-white/50 rounded-lg border border-border-light p-6 min-h-[400px]">
+      <div className="tiptap-content bg-parchment-warm rounded-lg border border-border-light p-6 min-h-[400px]">
         {editor ? (
           <EditorContent editor={editor} />
         ) : (
