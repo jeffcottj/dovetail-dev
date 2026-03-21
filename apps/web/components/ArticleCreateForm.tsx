@@ -9,6 +9,7 @@ import { buildTree, flattenTree } from '../lib/categories';
 import { useToast } from '../lib/hooks/useToast';
 import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
+import { articleUrl } from '../lib/article-url';
 import type { Article, Category, Tag } from '@dovetail/types';
 
 interface ArticleCreateFormProps {
@@ -72,7 +73,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       await assignTags(created.id);
       toast.success('Draft saved');
       setTimeout(() => {
-        router.push(`/articles/${created.slug}`);
+        router.push(articleUrl(created));
       }, 500);
     } catch {
       toast.error('Failed to save draft');
@@ -105,7 +106,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       });
       toast.success('Article published');
       setTimeout(() => {
-        router.push(`/articles/${created.slug}`);
+        router.push(articleUrl(created));
       }, 500);
     } catch {
       toast.error('Failed to publish article');

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, articles, articleVersions } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
@@ -8,6 +8,7 @@ import { validateBody, validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 import { toSlug } from '../utils/slug.js';
 import { extractText } from '../utils/tiptap.js';
+import { resolveCategoryPath, buildCategoryPath } from '../utils/category-path.js';
 import { resolveRole, hasMinimumRole } from '../services/permissions.js';
 import { generateEmbeddings } from '../services/embedding-pipeline.js';
 import type { Role } from '@dovetail/types';
@@ -57,18 +58,51 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (_
     .limit(limit)
     .offset(offset);
 
-  res.json(paginate(data, Number(total), { page, limit }));
+  // Enrich with category paths
+  const enriched = await Promise.all(
+    data.map(async (article) => ({
+      ...article,
+      categoryPath: await buildCategoryPath(article.categoryId),
+    })),
+  );
+
+  res.json(paginate(enriched, Number(total), { page, limit }));
 });
 
-// GET /api/articles/by-slug/:slug — must be before /:id to avoid matching "by-slug" as an id
-articlesRouter.get('/by-slug/:slug', authMiddleware, async (req, res) => {
-  const slug = req.params.slug as string;
-  const [article] = await db.select().from(articles).where(eq(articles.slug, slug));
+// GET /api/articles/by-path/* — resolve article via category path + article slug
+articlesRouter.get('/by-path/{*path}', authMiddleware, async (req, res) => {
+  const pathParam = (req.params as any).path;
+  // Express 5 wildcard params may be a string or array depending on path-to-regexp version
+  const segments = Array.isArray(pathParam)
+    ? pathParam.filter(Boolean)
+    : String(pathParam).split('/').filter(Boolean);
+
+  if (segments.length < 2) {
+    res.status(400).json({ error: 'Path must include at least a category and article slug' });
+    return;
+  }
+
+  const categorySegments = segments.slice(0, -1);
+  const articleSlug = segments[segments.length - 1];
+
+  const categoryId = await resolveCategoryPath(categorySegments);
+  if (!categoryId) {
+    res.status(404).json({ error: 'Category not found' });
+    return;
+  }
+
+  const [article] = await db
+    .select()
+    .from(articles)
+    .where(and(eq(articles.slug, articleSlug), eq(articles.categoryId, categoryId)));
+
   if (!article) {
     res.status(404).json({ error: 'Article not found' });
     return;
   }
-  res.json(article);
+
+  const categoryPath = await buildCategoryPath(article.categoryId);
+  res.json({ ...article, categoryPath });
 });
 
 // GET /api/articles/:id
@@ -79,7 +113,8 @@ articlesRouter.get('/:id', authMiddleware, async (req, res) => {
     res.status(404).json({ error: 'Article not found' });
     return;
   }
-  res.json(article);
+  const categoryPath = await buildCategoryPath(article.categoryId);
+  res.json({ ...article, categoryPath });
 });
 
 // POST /api/articles — create draft
@@ -170,7 +205,17 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
     const newContent = req.body.content ?? current.content;
     updates.plainText = extractText(newContent);
 
-    const [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+    let updated;
+    try {
+      [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+    } catch (err: any) {
+      if (err.code === '23505' && err.constraint_name?.includes('slug')) {
+        updates.slug = `${updates.slug}-${Date.now().toString(36)}`;
+        [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+      } else {
+        throw err;
+      }
+    }
     result = updated;
   });
 

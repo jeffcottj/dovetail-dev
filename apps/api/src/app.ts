@@ -49,6 +49,12 @@ import { tagsRouter, articleTagsRouter } from './routes/tags.js';
 app.use('/api/tags', tagsRouter);
 app.use('/api/articles/:id/tags', articleTagsRouter);
 
+import { importRouter } from './routes/admin/import.js';
+app.use('/api/admin/import', importRouter);
+
+import { bulkPublishRouter } from './routes/admin/bulk-publish.js';
+app.use('/api/admin/articles/bulk-publish', bulkPublishRouter);
+
 // --- Mount route files above this line ---
 
 // Global error handler — must be after all routes

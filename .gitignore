@@ -5,3 +5,8 @@ dist/
 .env
 *.local
 .DS_Store
+sample-import/
+.claude/
+.playwright-cli/
+apps/api/uploads/
+test-export.zip

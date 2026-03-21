@@ -17,6 +17,7 @@ import { useToast } from '../lib/hooks/useToast';
 interface TreeItemProps {
   node: TreeNode;
   depth: number;
+  slugPath: string[];
   userRole: Role;
   categories: Category[];
   onMutationSuccess: () => void;
@@ -25,6 +26,7 @@ interface TreeItemProps {
 function TreeItem({
   node,
   depth,
+  slugPath,
   userRole,
   categories,
   onMutationSuccess,
@@ -33,7 +35,8 @@ function TreeItem({
   const toast = useToast();
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
-  const isActive = pathname === `/categories/${node.slug}`;
+  const categoryPath = [...slugPath, node.slug];
+  const isActive = pathname === `/categories/${categoryPath.join('/')}`;
   const isAdmin = hasMinimumRole(userRole, 'admin');
 
   const [renameModalOpen, setRenameModalOpen] = useState(false);
@@ -89,7 +92,7 @@ function TreeItem({
         )}
         {!hasChildren && <span className="w-4 shrink-0" />}
         <Link
-          href={`/categories/${node.slug}`}
+          href={`/categories/${categoryPath.join('/')}`}
           className="flex-1 truncate"
         >
           {node.name}
@@ -133,6 +136,7 @@ function TreeItem({
               key={child.id}
               node={child}
               depth={depth + 1}
+              slugPath={categoryPath}
               userRole={userRole}
               categories={categories}
               onMutationSuccess={onMutationSuccess}
@@ -222,6 +226,7 @@ export function SidebarTree({ categories, userRole }: SidebarTreeProps) {
           key={node.id}
           node={node}
           depth={0}
+          slugPath={[]}
           userRole={userRole}
           categories={categories}
           onMutationSuccess={handleMutationSuccess}

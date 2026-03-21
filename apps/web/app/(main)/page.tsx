@@ -6,6 +6,7 @@ import { hasMinimumRole } from '../../lib/roles';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { articleUrl } from '../../lib/article-url';
 import type { Article, Role } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -85,7 +86,7 @@ export default async function HomePage() {
             {userDrafts.map((article) => (
               <Link
                 key={article.id}
-                href={`/articles/${article.slug}`}
+                href={articleUrl(article)}
                 className="block px-4 py-3 -mx-4 rounded-lg hover:bg-parchment-warm transition-colors duration-150 group"
               >
                 <div className="flex items-center justify-between gap-4">
@@ -117,7 +118,7 @@ export default async function HomePage() {
             {recentArticles.map((article) => (
               <li key={article.id}>
                 <Link
-                  href={`/articles/${article.slug}`}
+                  href={articleUrl(article)}
                   className="block px-4 py-4 -mx-4 rounded-lg hover:bg-parchment-warm transition-colors duration-150 group"
                 >
                   <div className="flex items-start justify-between gap-4">

@@ -1,0 +1,54 @@
+import supertest from 'supertest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { createChain } from '../../helpers/db-mock.js';
+import { COOKIE_NAME, makeToken } from '../../helpers/token.js';
+
+vi.mock('@dovetail/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dovetail/db')>();
+  return {
+    ...actual,
+    db: {
+      select: vi.fn(),
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      execute: vi.fn(),
+      transaction: vi.fn(),
+    },
+  };
+});
+
+import { app } from '../../../app.js';
+import { db } from '@dovetail/db';
+
+describe('POST /api/admin/articles/bulk-publish', () => {
+  let adminToken: string;
+  let editorToken: string;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    adminToken = await makeToken({ sub: 'admin-1', role: 'admin' });
+    editorToken = await makeToken({ sub: 'editor-1', role: 'editor' });
+  });
+
+  it('returns 403 for non-admin users', async () => {
+    const res = await supertest(app)
+      .post('/api/admin/articles/bulk-publish')
+      .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+      .send({});
+    expect(res.status).toBe(403);
+  });
+
+  it('publishes all draft articles when no importJobId given', async () => {
+    const updateChain = createChain([{ id: '1' }, { id: '2' }]);
+    (db.update as Mock).mockReturnValue(updateChain);
+
+    const res = await supertest(app)
+      .post('/api/admin/articles/bulk-publish')
+      .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalled();
+  });
+});

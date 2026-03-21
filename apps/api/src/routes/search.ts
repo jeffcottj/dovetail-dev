@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 import { createEmbeddingProvider } from '../services/embeddings.js';
+import { buildCategoryPath } from '../utils/category-path.js';
 
 export const searchRouter: Router = Router();
 
@@ -92,7 +93,14 @@ async function fulltextSearch(q: string, conditions: ReturnType<typeof eq>[], li
     .limit(limit)
     .offset(offset);
 
-  return { data, total: Number(total) };
+  const enriched = await Promise.all(
+    data.map(async (article) => ({
+      ...article,
+      categoryPath: await buildCategoryPath(article.categoryId),
+    })),
+  );
+
+  return { data: enriched, total: Number(total) };
 }
 
 // Semantic search using pgvector cosine similarity
@@ -117,18 +125,23 @@ async function semanticSearch(q: string, limit: number, categoryId?: string) {
     LIMIT ${limit}
   `);
 
-  return (results as any[]).map((r) => ({
-    id: r.article_id,
-    title: r.title,
-    slug: r.slug,
-    categoryId: r.category_id,
-    authorId: r.author_id,
-    status: r.status,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-    chunkText: r.chunk_text,
-    similarity: parseFloat(r.similarity),
-  }));
+  const enriched = await Promise.all(
+    (results as any[]).map(async (r) => ({
+      id: r.article_id,
+      title: r.title,
+      slug: r.slug,
+      categoryId: r.category_id,
+      categoryPath: await buildCategoryPath(r.category_id),
+      authorId: r.author_id,
+      status: r.status,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      chunkText: r.chunk_text,
+      similarity: parseFloat(r.similarity),
+    })),
+  );
+
+  return enriched;
 }
 
 searchRouter.get('/', authMiddleware, validateQuery(searchQuerySchema), async (_req, res) => {

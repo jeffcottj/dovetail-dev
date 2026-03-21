@@ -8,6 +8,7 @@ import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
 import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
+import { articleUrl } from '../lib/article-url';
 import type { Article } from '@dovetail/types';
 
 export function ArticleEditor({ article }: { article: Article }) {
@@ -65,7 +66,7 @@ export function ArticleEditor({ article }: { article: Article }) {
       });
       toast.success('Article published');
       setTimeout(() => {
-        router.push(`/articles/${article.slug}`);
+        router.push(articleUrl(article));
       }, 500);
     } catch (err) {
       toast.error('Failed to publish article');

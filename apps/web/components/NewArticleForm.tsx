@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClientFetch } from '../lib/api-client';
 import { Button } from './ui/Button';
+import { articleUrl } from '../lib/article-url';
 import type { Article, Category } from '@dovetail/types';
 
 interface NewArticleFormProps {
@@ -30,7 +31,7 @@ export function NewArticleForm({ categories }: NewArticleFormProps) {
           method: 'POST',
           body: JSON.stringify({ title: trimmed, categoryId }),
         });
-        router.push(`/articles/${article.slug}/edit`);
+        router.push(`${articleUrl(article)}/edit`);
       } catch {
         setError('Failed to create article. Please try again.');
       } finally {
