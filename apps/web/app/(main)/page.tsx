@@ -48,7 +48,7 @@ export default async function HomePage() {
     <div>
       <header className="mb-8">
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-ink mb-2 tracking-tight">
-          Welcome to Dovetail
+          Knowledge Base
         </h1>
         {session?.user?.name && (
           <p className="text-ink-muted font-[family-name:var(--font-ui)] text-sm">
@@ -78,7 +78,7 @@ export default async function HomePage() {
       {/* Your Drafts (editor+ only) */}
       {isEditor && userDrafts.length > 0 && (
         <section className="mb-10">
-          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-4 flex items-center gap-2">
+          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-4 flex items-center gap-2">
             <FileEdit className="w-5 h-5 text-warning" />
             Recent Drafts
           </h2>
@@ -103,7 +103,7 @@ export default async function HomePage() {
 
       {/* Recently Updated Articles */}
       <section>
-        <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-4 flex items-center gap-2">
+        <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-4 flex items-center gap-2">
           <Clock className="w-5 h-5 text-ink-muted" />
           Recently Updated
         </h2>

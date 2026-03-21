@@ -116,7 +116,7 @@ export default async function AdminPage() {
           href="/admin/users"
           className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
         >
-          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-2">
+          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-2">
             Users
           </h2>
           <p className="text-ink-light text-sm">
@@ -128,7 +128,7 @@ export default async function AdminPage() {
           href="/admin/api-keys"
           className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
         >
-          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-2">
+          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-2">
             API Keys
           </h2>
           <p className="text-ink-light text-sm">
@@ -140,7 +140,7 @@ export default async function AdminPage() {
           href="/admin/tags"
           className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
         >
-          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-2">
+          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-2">
             Tags
           </h2>
           <p className="text-ink-light text-sm">
@@ -152,7 +152,7 @@ export default async function AdminPage() {
           href="/admin/import"
           className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
         >
-          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink mb-2">
+          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-2">
             Import
           </h2>
           <p className="text-ink-light text-sm">

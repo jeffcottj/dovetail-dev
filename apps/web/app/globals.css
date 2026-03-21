@@ -1,44 +1,93 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Cardo:ital,wght@0,400;0,700;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @import "tailwindcss";
 
 @theme {
-  /* Editorial law-library palette */
-  --color-ink: #1a1a1a;
-  --color-ink-light: #4a4a4a;
-  --color-ink-muted: #7a7a7a;
-  --color-parchment: #faf8f5;
-  --color-parchment-warm: #f5f0e8;
-  --color-parchment-dark: #ebe4d8;
-  --color-accent: #8b4513;
-  --color-accent-light: #a0522d;
-  --color-accent-hover: #6d360f;
-  --color-border: #d4cdc0;
-  --color-border-light: #e8e2d8;
-  --color-success: #2d6a4f;
+  /* MLA brand palette */
+  --color-ink: #000000;
+  --color-ink-light: #334155;
+  --color-ink-muted: #5C6E85;
+  --color-parchment: #ffffff;
+  --color-parchment-warm: #f1f5f9;
+  --color-parchment-dark: #e2e8f0;
+  --color-accent: #094A6B;
+  --color-accent-light: #5B8DE0;
+  --color-accent-hover: #073852;
+  --color-border: #cbd5e1;
+  --color-border-light: #e2e8f0;
+  --color-success: #007A6B;
   --color-warning: #b07d10;
-  --color-danger: #9b2c2c;
+  --color-danger: #dc2626;
+  --color-mint: #87CCC3;
+  --color-teal: #007A6B;
+  --color-bright-blue: #5B8DE0;
 
   /* Sidebar */
-  --color-sidebar: #2c2520;
-  --color-sidebar-hover: #3d3530;
-  --color-sidebar-text: #d4cdc0;
-  --color-sidebar-text-active: #faf8f5;
+  --color-sidebar: #094A6B;
+  --color-sidebar-hover: #0b5a82;
+  --color-sidebar-text: #87CCC3;
+  --color-sidebar-text-active: #ffffff;
 
   /* Typography scale */
-  --font-display: "Playfair Display", "Georgia", serif;
-  --font-body: "Source Serif 4", "Georgia", serif;
+  --font-display: "DM Sans", "Helvetica Neue", sans-serif;
+  --font-sub: "Cardo", "Georgia", serif;
+  --font-body: "Archivo", "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", "Consolas", monospace;
   --font-ui: "DM Sans", "Helvetica Neue", sans-serif;
 }
 
+/* Dark mode overrides */
+[data-theme="dark"] {
+  --color-ink: #f1f5f9;
+  --color-ink-light: #cbd5e1;
+  --color-ink-muted: #94a3b8;
+  --color-parchment: #0f172a;
+  --color-parchment-warm: #1e293b;
+  --color-parchment-dark: #334155;
+  --color-accent: #5B8DE0;
+  --color-accent-light: #87CCC3;
+  --color-accent-hover: #7BA3E8;
+  --color-border: #334155;
+  --color-border-light: #1e293b;
+  --color-success: #87CCC3;
+  --color-warning: #d4a017;
+  --color-danger: #f87171;
+  --color-mint: #87CCC3;
+  --color-teal: #5eead4;
+  --color-bright-blue: #93B8F0;
+
+  --color-sidebar: #0c1929;
+  --color-sidebar-hover: #162033;
+  --color-sidebar-text: #94a3b8;
+  --color-sidebar-text-active: #f1f5f9;
+}
+
+[data-theme="dark"] dialog::backdrop {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* Theme-aware logo visibility */
+.light-hidden { display: none; }
+[data-theme="dark"] .dark-hidden { display: none; }
+[data-theme="dark"] .light-hidden { display: block; }
+
 /* Base styles */
+html {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
 body {
   font-family: var(--font-body);
   color: var(--color-ink);
   background-color: var(--color-parchment);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus indicators */
+:focus-visible {
+  outline: 2px solid var(--color-accent-light);
+  outline-offset: 2px;
 }
 
 /* Scrollbar styling */
@@ -74,17 +123,17 @@ body {
 }
 
 .tiptap-content .ProseMirror h2 {
-  font-family: var(--font-display);
+  font-family: var(--font-sub);
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 700;
   margin: 1.25em 0 0.4em;
   line-height: 1.3;
 }
 
 .tiptap-content .ProseMirror h3 {
-  font-family: var(--font-display);
+  font-family: var(--font-sub);
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: 700;
   margin: 1em 0 0.35em;
   line-height: 1.4;
 }

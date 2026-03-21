@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { signIn } from '../../auth';
 import { DEV_USERS, isDevAuthEnabled } from '../../lib/dev-auth';
 
@@ -50,11 +51,24 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center bg-parchment px-4">
       <div className="w-full max-w-sm">
         <div className="bg-parchment-warm border border-border-light rounded-lg shadow-sm p-8">
-          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink text-center tracking-tight">
-            Dovetail
-          </h1>
-          <p className="text-ink-muted text-sm text-center mt-1 font-[family-name:var(--font-ui)]">
-            Legal Knowledge Base
+          <Image
+            src="/logos/mla-secondary-fullcolor.png"
+            alt="Maryland Legal Aid"
+            width={280}
+            height={117}
+            className="mx-auto dark-hidden"
+            priority
+          />
+          <Image
+            src="/logos/mla-secondary-white.png"
+            alt="Maryland Legal Aid"
+            width={280}
+            height={117}
+            className="mx-auto light-hidden"
+            priority
+          />
+          <p className="text-ink-muted text-sm text-center mt-3 font-[family-name:var(--font-ui)]">
+            Knowledge Base
           </p>
 
           <hr className="border-border-light my-6" />
