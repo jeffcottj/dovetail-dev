@@ -25,7 +25,7 @@ vi.mock('../../utils/category-path.js', () => ({
 
 import { app } from '../../app.js';
 import { db } from '@dovetail/db';
-import { resolveCategoryPath } from '../../utils/category-path.js';
+import { resolveCategoryPath, buildCategoryPath } from '../../utils/category-path.js';
 
 const CAT_ID = '00000000-0000-4000-8000-000000000001';
 const ART_ID = '00000000-0000-4000-8000-000000000010';
@@ -135,6 +135,20 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.title).toBe('Test Article');
+    });
+
+    it('includes categoryPath in the response', async () => {
+      (db.insert as Mock).mockReturnValue(createChain([mockArticle]));
+      (buildCategoryPath as Mock).mockResolvedValueOnce(['housing', 'rental']);
+
+      const res = await supertest(app)
+        .post('/api/articles')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Test Article', categoryId: CAT_ID, content: {} });
+
+      expect(res.status).toBe(201);
+      expect(res.body.categoryPath).toEqual(['housing', 'rental']);
+      expect(buildCategoryPath).toHaveBeenCalledWith(CAT_ID);
     });
 
     it('returns 400 for missing title', async () => {
