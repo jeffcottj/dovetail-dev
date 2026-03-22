@@ -24,6 +24,9 @@ app.get('/api/me', authMiddleware, (req: AuthRequest, res) => {
   res.json(req.user);
 });
 
+import { meRouter } from './routes/me.js';
+app.use('/api/me', meRouter);
+
 import { categoriesRouter } from './routes/categories.js';
 app.use('/api/categories', categoriesRouter);
 

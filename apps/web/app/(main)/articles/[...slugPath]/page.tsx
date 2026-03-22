@@ -48,8 +48,20 @@ async function renderViewPage(slugPath: string[]) {
   }
 
   const fullPath = `/articles/${slugPath.join('/')}`;
-  const userRole = session?.user?.role ?? 'viewer';
-  const canEdit = userRole === 'editor' || userRole === 'admin';
+  const globalRole = session?.user?.role ?? 'viewer';
+  let canEdit = globalRole === 'editor' || globalRole === 'admin';
+
+  // Check category-level role override if the user isn't already an editor/admin
+  if (!canEdit && session?.user && article.categoryId) {
+    try {
+      const { role: effectiveRole } = await apiFetch<{ role: string }>(
+        `/api/me/effective-role?categoryId=${article.categoryId}`,
+      );
+      canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
+    } catch {
+      // Fall back to global role on error
+    }
+  }
 
   let categories: Category[] = [];
   if (canEdit) {
@@ -127,17 +139,31 @@ async function renderViewPage(slugPath: string[]) {
 
 async function renderEditPage(slugPath: string[]) {
   const session = await auth();
-  const userRole = session?.user?.role ?? 'viewer';
-
-  if (userRole === 'viewer') {
-    redirect(`/articles/${slugPath.join('/')}`);
-  }
+  const globalRole = session?.user?.role ?? 'viewer';
 
   let article: Article;
   try {
     article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
   } catch {
     notFound();
+  }
+
+  let canEdit = globalRole === 'editor' || globalRole === 'admin';
+
+  // Check category-level role override if the user isn't already an editor/admin
+  if (!canEdit && session?.user && article.categoryId) {
+    try {
+      const { role: effectiveRole } = await apiFetch<{ role: string }>(
+        `/api/me/effective-role?categoryId=${article.categoryId}`,
+      );
+      canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
+    } catch {
+      // Fall back to global role on error
+    }
+  }
+
+  if (!canEdit) {
+    redirect(`/articles/${slugPath.join('/')}`);
   }
 
   return (
@@ -170,8 +196,20 @@ async function renderHistoryPage(slugPath: string[]) {
     `/api/articles/${article.id}/versions?limit=50`,
   );
 
-  const userRole = session?.user?.role ?? 'viewer';
-  const canRestore = userRole === 'editor' || userRole === 'admin';
+  const globalRole = session?.user?.role ?? 'viewer';
+  let canRestore = globalRole === 'editor' || globalRole === 'admin';
+
+  // Check category-level role override if the user isn't already an editor/admin
+  if (!canRestore && session?.user && article.categoryId) {
+    try {
+      const { role: effectiveRole } = await apiFetch<{ role: string }>(
+        `/api/me/effective-role?categoryId=${article.categoryId}`,
+      );
+      canRestore = effectiveRole === 'editor' || effectiveRole === 'admin';
+    } catch {
+      // Fall back to global role on error
+    }
+  }
 
   return (
     <div>
