@@ -7,6 +7,7 @@ import { ArticleActions } from '../../../../components/ArticleActions';
 import { ArticleEditor } from '../../../../components/ArticleEditor';
 import { RestoreButton } from '../../../../components/RestoreButton';
 import { Breadcrumbs } from '../../../../components/Breadcrumbs';
+import { Badge } from '../../../../components/ui/Badge';
 import type { Article, ArticleVersion, Category, Tag } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -75,6 +76,10 @@ async function renderViewPage(slugPath: string[]) {
               {article.title}
             </h1>
             <div className="flex items-center gap-3 mt-3 text-xs font-[family-name:var(--font-ui)] text-ink-muted">
+              <Badge variant={article.status as 'published' | 'draft' | 'archived'}>
+                {article.status.charAt(0).toUpperCase() + article.status.slice(1)}
+              </Badge>
+              <span className="text-border">|</span>
               <time dateTime={new Date(article.updatedAt).toISOString()}>
                 Updated{' '}
                 {new Date(article.updatedAt).toLocaleDateString('en-US', {
