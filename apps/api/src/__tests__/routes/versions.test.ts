@@ -123,6 +123,29 @@ describe('Version history routes', () => {
       expect(res.body.title).toBe('Old Title');
     });
 
+    it('restores when POST has no body and no Content-Type (fixed client fetch)', async () => {
+      const restored = { ...mockArticle, title: 'Old Title', content: mockVersion.content };
+
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockVersion]))   // old version
+            .mockReturnValueOnce(createChain([mockArticle]))   // current article
+            .mockReturnValueOnce(createChain([{ max: 1 }])),   // max version
+          insert: vi.fn().mockReturnValue(createChain([])),     // insert snapshot
+          update: vi.fn().mockReturnValue(createChain([restored])), // overwrite article
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .post(`/api/articles/${ART_ID}/versions/${VER_ID}/restore`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.title).toBe('Old Title');
+    });
+
     it('returns 403 for viewer', async () => {
       const res = await supertest(app)
         .post(`/api/articles/${ART_ID}/versions/${VER_ID}/restore`)

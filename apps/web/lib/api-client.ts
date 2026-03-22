@@ -5,7 +5,7 @@ export async function apiClientFetch<T = unknown>(path: string, init?: RequestIn
     ...init,
     credentials: 'include',
     headers: {
-      'Content-Type': 'application/json',
+      ...(init?.body != null ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
   });
