@@ -200,40 +200,29 @@ export class ImportEngine {
     const createdAt = dateModified ? new Date(dateModified) : now;
 
     let articleId: string;
-    try {
-      const [created] = await db.insert(articles).values({
-        title: art.title,
-        slug,
-        categoryId,
-        authorId: this.opts.userId,
-        content,
-        plainText,
-        status: this.opts.defaultStatus,
-        createdAt,
-        updatedAt: now,
-        publishedAt,
-      }).returning();
-      articleId = created.id;
-    } catch (err: any) {
-      if (err.code === '23505' && err.constraint_name?.includes('slug')) {
-        const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
-        const [created] = await db.insert(articles).values({
-          title: art.title,
-          slug: uniqueSlug,
-          categoryId,
-          authorId: this.opts.userId,
-          content,
-          plainText,
-          status: this.opts.defaultStatus,
-          createdAt,
-          updatedAt: now,
-          publishedAt,
-        }).returning();
-        articleId = created.id;
-      } else {
-        throw err;
-      }
+
+    // Check for existing article with same slug in same category
+    const existing = await db.select({ id: articles.id })
+      .from(articles)
+      .where(and(eq(articles.slug, slug), eq(articles.categoryId, categoryId)));
+
+    if (existing.length > 0) {
+      throw new Error(`Duplicate article skipped: "${art.title}" (slug: ${slug})`);
     }
+
+    const [created] = await db.insert(articles).values({
+      title: art.title,
+      slug,
+      categoryId,
+      authorId: this.opts.userId,
+      content,
+      plainText,
+      status: this.opts.defaultStatus,
+      createdAt,
+      updatedAt: now,
+      publishedAt,
+    }).returning();
+    articleId = created.id;
 
     // Copy attachments
     const imagesDir = path.join(this.opts.extractDir, 'assets', 'images', art.id);

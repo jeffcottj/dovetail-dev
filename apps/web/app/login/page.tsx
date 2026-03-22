@@ -58,6 +58,7 @@ export default function LoginPage() {
             height={117}
             className="mx-auto dark-hidden"
             priority
+            unoptimized
           />
           <Image
             src="/logos/mla-secondary-white.png"
@@ -66,6 +67,7 @@ export default function LoginPage() {
             height={117}
             className="mx-auto light-hidden"
             priority
+            unoptimized
           />
           <p className="text-ink-muted text-sm text-center mt-3 font-[family-name:var(--font-ui)]">
             Knowledge Base

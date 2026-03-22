@@ -27,12 +27,11 @@ export function SidebarWrapper({ children }: SidebarWrapperProps) {
   };
 
   return (
-    <div className="flex shrink-0">
+    <div className="flex shrink-0" style={{ visibility: mounted ? 'visible' : 'hidden' }}>
       <aside
-        className={`bg-sidebar text-sidebar-text min-h-screen flex flex-col border-r border-sidebar-hover transition-[width] duration-200 ${
-          collapsed ? 'w-0 overflow-hidden' : 'w-64'
-        }`}
-        style={{ opacity: mounted ? 1 : 0 }}
+        className={`bg-sidebar text-sidebar-text min-h-screen flex flex-col border-r border-sidebar-hover ${
+          mounted ? 'transition-[width] duration-200' : ''
+        } ${collapsed ? 'w-0 overflow-hidden' : 'w-64'}`}
       >
         {children}
         {!collapsed && (

@@ -135,7 +135,8 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
       status: 'draft',
     }).returning();
     void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
-    res.status(201).json(created);
+    const categoryPath = await buildCategoryPath(created.categoryId);
+    res.status(201).json({ ...created, categoryPath });
   } catch (err: any) {
     if (err.code === '23505' && err.constraint_name?.includes('slug')) {
       const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
@@ -149,7 +150,8 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
         status: 'draft',
       }).returning();
       void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
-      res.status(201).json(created);
+      const categoryPath = await buildCategoryPath(created.categoryId);
+      res.status(201).json({ ...created, categoryPath });
     } else {
       throw err;
     }

@@ -66,7 +66,7 @@ export default async function AdminPage() {
 
   return (
     <div>
-      <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-ink mb-2 tracking-tight">
+      <h1 className="font-[family-name:var(--font-sub)] text-3xl font-bold text-ink mb-2 tracking-tight">
         Admin Dashboard
       </h1>
       <p className="text-ink-muted font-[family-name:var(--font-ui)] text-sm mb-8">

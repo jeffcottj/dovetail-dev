@@ -7,6 +7,7 @@ import { ArticleActions } from '../../../../components/ArticleActions';
 import { ArticleEditor } from '../../../../components/ArticleEditor';
 import { RestoreButton } from '../../../../components/RestoreButton';
 import { Breadcrumbs } from '../../../../components/Breadcrumbs';
+import { Badge } from '../../../../components/ui/Badge';
 import type { Article, ArticleVersion, Category, Tag } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -47,8 +48,20 @@ async function renderViewPage(slugPath: string[]) {
   }
 
   const fullPath = `/articles/${slugPath.join('/')}`;
-  const userRole = session?.user?.role ?? 'viewer';
-  const canEdit = userRole === 'editor' || userRole === 'admin';
+  const globalRole = session?.user?.role ?? 'viewer';
+  let canEdit = globalRole === 'editor' || globalRole === 'admin';
+
+  // Check category-level role override if the user isn't already an editor/admin
+  if (!canEdit && session?.user && article.categoryId) {
+    try {
+      const { role: effectiveRole } = await apiFetch<{ role: string }>(
+        `/api/me/effective-role?categoryId=${article.categoryId}`,
+      );
+      canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
+    } catch {
+      // Fall back to global role on error
+    }
+  }
 
   let categories: Category[] = [];
   if (canEdit) {
@@ -75,6 +88,10 @@ async function renderViewPage(slugPath: string[]) {
               {article.title}
             </h1>
             <div className="flex items-center gap-3 mt-3 text-xs font-[family-name:var(--font-ui)] text-ink-muted">
+              <Badge variant={article.status as 'published' | 'draft' | 'archived'}>
+                {article.status.charAt(0).toUpperCase() + article.status.slice(1)}
+              </Badge>
+              <span className="text-border">|</span>
               <time dateTime={new Date(article.updatedAt).toISOString()}>
                 Updated{' '}
                 {new Date(article.updatedAt).toLocaleDateString('en-US', {
@@ -122,17 +139,31 @@ async function renderViewPage(slugPath: string[]) {
 
 async function renderEditPage(slugPath: string[]) {
   const session = await auth();
-  const userRole = session?.user?.role ?? 'viewer';
-
-  if (userRole === 'viewer') {
-    redirect(`/articles/${slugPath.join('/')}`);
-  }
+  const globalRole = session?.user?.role ?? 'viewer';
 
   let article: Article;
   try {
     article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
   } catch {
     notFound();
+  }
+
+  let canEdit = globalRole === 'editor' || globalRole === 'admin';
+
+  // Check category-level role override if the user isn't already an editor/admin
+  if (!canEdit && session?.user && article.categoryId) {
+    try {
+      const { role: effectiveRole } = await apiFetch<{ role: string }>(
+        `/api/me/effective-role?categoryId=${article.categoryId}`,
+      );
+      canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
+    } catch {
+      // Fall back to global role on error
+    }
+  }
+
+  if (!canEdit) {
+    redirect(`/articles/${slugPath.join('/')}`);
   }
 
   return (
@@ -165,8 +196,20 @@ async function renderHistoryPage(slugPath: string[]) {
     `/api/articles/${article.id}/versions?limit=50`,
   );
 
-  const userRole = session?.user?.role ?? 'viewer';
-  const canRestore = userRole === 'editor' || userRole === 'admin';
+  const globalRole = session?.user?.role ?? 'viewer';
+  let canRestore = globalRole === 'editor' || globalRole === 'admin';
+
+  // Check category-level role override if the user isn't already an editor/admin
+  if (!canRestore && session?.user && article.categoryId) {
+    try {
+      const { role: effectiveRole } = await apiFetch<{ role: string }>(
+        `/api/me/effective-role?categoryId=${article.categoryId}`,
+      );
+      canRestore = effectiveRole === 'editor' || effectiveRole === 'admin';
+    } catch {
+      // Fall back to global role on error
+    }
+  }
 
   return (
     <div>
