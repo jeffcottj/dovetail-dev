@@ -12,6 +12,8 @@
   "dependencies": {
     "@dovetail/db": "workspace:*",
     "@dovetail/types": "workspace:*",
+    "@tiptap/extension-image": "^3.20.4",
+    "@tiptap/extension-link": "^3.20.4",
     "@tiptap/extension-table": "^3.20.4",
     "@tiptap/pm": "^3.20.1",
     "@tiptap/react": "^3.20.1",
