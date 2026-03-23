@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
 import { Button } from './ui/Button';
@@ -19,7 +20,7 @@ export function ArticleEditor({ article }: { article: Article }) {
   const [publishing, setPublishing] = useState(false);
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit, Table.configure({ resizable: false }), TableRow, TableCell, TableHeader],
     content: article.content as Parameters<typeof useEditor>[0] extends { content?: infer C } ? C : never,
     immediatelyRender: false,
     editorProps: {

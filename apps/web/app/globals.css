@@ -191,6 +191,25 @@ body {
   margin: 2em 0;
 }
 
+.tiptap-content .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.tiptap-content .ProseMirror th,
+.tiptap-content .ProseMirror td {
+  border: 1px solid var(--color-border);
+  padding: 0.5em 0.75em;
+  vertical-align: top;
+  line-height: 1.7;
+}
+
+.tiptap-content .ProseMirror th {
+  background: var(--color-parchment-warm);
+  font-weight: 600;
+}
+
 /* Toast slide-in animation */
 @keyframes slide-in {
   from {

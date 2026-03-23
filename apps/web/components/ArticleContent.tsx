@@ -2,10 +2,11 @@
 
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 
 export function ArticleContent({ content }: { content: unknown }) {
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit, Table.configure({ resizable: false }), TableRow, TableCell, TableHeader],
     content: content as Parameters<typeof useEditor>[0] extends { content?: infer C } ? C : never,
     editable: false,
     immediatelyRender: false,
