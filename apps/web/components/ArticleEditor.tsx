@@ -4,7 +4,10 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
+import { EditorToolbar } from './EditorToolbar';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
 import { Button } from './ui/Button';
@@ -20,7 +23,7 @@ export function ArticleEditor({ article }: { article: Article }) {
   const [publishing, setPublishing] = useState(false);
 
   const editor = useEditor({
-    extensions: [StarterKit, Table.configure({ resizable: false }), TableRow, TableCell, TableHeader],
+    extensions: [StarterKit, Image, Link.configure({ openOnClick: false }), Table.configure({ resizable: false }), TableRow, TableCell, TableHeader],
     content: article.content as Parameters<typeof useEditor>[0] extends { content?: infer C } ? C : never,
     immediatelyRender: false,
     editorProps: {
@@ -114,7 +117,8 @@ export function ArticleEditor({ article }: { article: Article }) {
       <TagPicker articleId={article.id} />
 
       {/* Editor */}
-      <div className="tiptap-content bg-parchment-warm rounded-lg border border-border-light p-6 min-h-[400px]">
+      {editor && <EditorToolbar editor={editor} />}
+      <div className="tiptap-content bg-parchment-warm rounded-lg border border-border-light rounded-t-none p-6 min-h-[400px]">
         {editor ? (
           <EditorContent editor={editor} />
         ) : (
