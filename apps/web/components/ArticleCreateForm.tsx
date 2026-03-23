@@ -4,6 +4,9 @@ import { useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
+import { EditorToolbar } from './EditorToolbar';
 import { apiClientFetch } from '../lib/api-client';
 import { buildTree, flattenTree } from '../lib/categories';
 import { useToast } from '../lib/hooks/useToast';
@@ -32,7 +35,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [categories]);
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit, Image, Link.configure({ openOnClick: false })],
     content: '',
     immediatelyRender: false,
     editorProps: {
@@ -184,7 +187,8 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       <TagPicker onTagsChange={setSelectedTags} />
 
       {/* Editor */}
-      <div className="tiptap-content bg-parchment-warm rounded-lg border border-border-light p-6 min-h-[400px]">
+      {editor && <EditorToolbar editor={editor} />}
+      <div className="tiptap-content bg-parchment-warm rounded-lg border border-border-light rounded-t-none p-6 min-h-[400px]">
         {editor ? (
           <EditorContent editor={editor} />
         ) : (
