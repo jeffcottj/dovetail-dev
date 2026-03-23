@@ -191,6 +191,19 @@ body {
   margin: 2em 0;
 }
 
+.tiptap-content .ProseMirror a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-accent-light);
+  transition: color 0.15s ease;
+  cursor: pointer;
+}
+
+.tiptap-content .ProseMirror a:hover {
+  color: var(--color-accent-light);
+}
+
 .tiptap-content .ProseMirror table {
   border-collapse: collapse;
   width: 100%;
