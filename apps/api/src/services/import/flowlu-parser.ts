@@ -87,16 +87,33 @@ export function buildCategoryTree(articles: FlowluArticle[]): CategoryNode[] {
     }
   }
 
-  // Calculate articleCount: count the node itself + direct leaf children
-  // A "leaf" child is one with no children of its own
+  // Identify original leaf nodes (no children) before any mutation
+  const originalLeafIds = new Set<string>();
   for (const node of nodes.values()) {
-    // Count itself
-    node.articleCount = 1;
-    // Count direct children that are leaves (not subcategories)
-    for (const child of node.children) {
-      if (child.children.length === 0) {
-        node.articleCount += 1;
-      }
+    if (node.children.length === 0) {
+      originalLeafIds.add(node.sourceId);
+    }
+  }
+
+  // Calculate articleCount and prune leaf nodes from the tree.
+  // Leaf nodes should only become articles, not categories.
+  for (const art of articles) {
+    const node = nodes.get(art.id)!;
+    if (originalLeafIds.has(node.sourceId)) {
+      node.articleCount = 0;
+      continue;
+    }
+    // Branch node: all direct children place their articles here, plus self if root
+    const isRoot = art.parentChain.length === 0;
+    node.articleCount = (isRoot ? 1 : 0) + node.children.length;
+    // Remove leaf children from tree (they become articles only, not categories)
+    node.children = node.children.filter(c => !originalLeafIds.has(c.sourceId));
+  }
+
+  // Top-level leaves stay as categories (articles.categoryId is NOT NULL)
+  for (const node of topLevel) {
+    if (originalLeafIds.has(node.sourceId)) {
+      node.articleCount = 1;
     }
   }
 

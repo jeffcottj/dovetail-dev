@@ -75,8 +75,9 @@ describe('Import integration (sample data)', () => {
 
     // Every (slug, parent) combo must be unique for dedup to work
     expect(allKeys.length).toBe(uniqueKeys.size);
-    // All 338 articles become category nodes
-    expect(allKeys.length).toBe(articles.length);
+    // Only branch nodes + top-level leaves become categories (fewer than total articles)
+    expect(allKeys.length).toBeLessThan(articles.length);
+    expect(allKeys.length).toBeGreaterThan(0);
   });
 
   it('same-name categories exist under different parents (not duplicates)', () => {

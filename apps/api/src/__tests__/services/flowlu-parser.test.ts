@@ -52,18 +52,52 @@ describe('buildCategoryTree', () => {
 
     const cdc = tree.find(n => n.sourceId === '11')!;
     expect(cdc.name).toBe('Consumer Debt Collection');
-    expect(cdc.children).toHaveLength(2); // 12 (Defending Claims) and 14 (HOA Collections)
+    // Only HOA Collections (14) remains; Defending Claims (12) is a leaf, pruned
+    expect(cdc.children).toHaveLength(1);
+    expect(cdc.children[0].sourceId).toBe('14');
 
-    const hoa = cdc.children.find(n => n.sourceId === '14')!;
-    expect(hoa.children).toHaveLength(1); // 15
-    expect(hoa.children[0].sourceId).toBe('15');
+    const hoa = cdc.children[0];
+    // HOA MD Contract Lien Act (15) is a leaf, pruned from HOA's children
+    expect(hoa.children).toHaveLength(0);
   });
 
   it('counts articles per category node', () => {
     const articles = parseDataJson(JSON.stringify(sampleData));
     const tree = buildCategoryTree(articles);
     const cdc = tree.find(n => n.sourceId === '11')!;
-    // Articles directly in CDC: 11 itself, plus 12
-    expect(cdc.articleCount).toBe(2); // 11 and 12 are directly in this category
+    // CDC is root: 1 (self) + 2 direct children (12 and 14) = 3
+    expect(cdc.articleCount).toBe(3);
+
+    const hoa = cdc.children.find(n => n.sourceId === '14')!;
+    // HOA is non-root: 0 (self goes to parent) + 1 direct child (15) = 1
+    expect(hoa.articleCount).toBe(1);
+
+    const familyLaw = tree.find(n => n.sourceId === '37')!;
+    // Family Law is a top-level leaf: articleCount = 1
+    expect(familyLaw.articleCount).toBe(1);
+  });
+
+  it('does not include leaf nodes as categories in the tree', () => {
+    const articles = parseDataJson(JSON.stringify(sampleData));
+    const tree = buildCategoryTree(articles);
+
+    // Collect all sourceIds in the tree
+    function collectIds(nodes: ReturnType<typeof buildCategoryTree>): string[] {
+      const ids: string[] = [];
+      for (const node of nodes) {
+        ids.push(node.sourceId);
+        ids.push(...collectIds(node.children));
+      }
+      return ids;
+    }
+
+    const treeIds = collectIds(tree);
+    // Leaf articles (12 and 15) should NOT appear in the tree
+    expect(treeIds).not.toContain('12');
+    expect(treeIds).not.toContain('15');
+    // Branch and top-level nodes should appear
+    expect(treeIds).toContain('11');
+    expect(treeIds).toContain('14');
+    expect(treeIds).toContain('37');
   });
 });
