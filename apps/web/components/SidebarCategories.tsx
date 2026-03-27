@@ -24,7 +24,7 @@ export function SidebarCategories({
   return (
     <>
       <div className="px-4 py-2 flex items-center justify-between">
-        <span className="text-[10px] font-[family-name:var(--font-ui)] uppercase tracking-widest text-sidebar-text/40 font-semibold">
+        <span className="text-[10px] font-[family-name:var(--font-ui)] uppercase tracking-widest text-sidebar-text/70 font-semibold">
           Categories
         </span>
         {isEditor && (

@@ -3,7 +3,6 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import Image from 'next/image';
 import { PanelLeftClose, PanelLeft } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle';
 
 const STORAGE_KEY = 'dovetail-sidebar-collapsed';
 
@@ -27,42 +26,35 @@ export function SidebarWrapper({ children }: SidebarWrapperProps) {
   };
 
   return (
-    <div className="flex shrink-0" style={{ visibility: mounted ? 'visible' : 'hidden' }}>
+    <div className="flex shrink-0 relative" style={{ visibility: mounted ? 'visible' : 'hidden' }}>
       <aside
-        className={`bg-sidebar text-sidebar-text min-h-screen flex flex-col border-r border-sidebar-hover ${
+        className={`bg-sidebar text-sidebar-text min-h-screen flex flex-col border-r border-border ${
           mounted ? 'transition-[width] duration-200' : ''
-        } ${collapsed ? 'w-0 overflow-hidden' : 'w-64'}`}
+        } ${collapsed ? 'w-0 overflow-hidden' : 'w-96'}`}
       >
         {children}
-        {!collapsed && (
-          <button
-            onClick={toggle}
-            className="mt-auto p-3 border-t border-sidebar-hover flex items-center justify-center hover:bg-sidebar-hover transition-colors"
-            aria-label="Collapse sidebar"
-          >
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
-        )}
       </aside>
       {collapsed && (
-        <div className="w-10 flex flex-col items-center pt-3 pb-4 bg-sidebar border-r border-sidebar-hover">
+        <div className="w-10 flex flex-col items-center pt-3 bg-sidebar border-r border-border">
           <Image
             src="/logos/mla-mark-white.png"
             alt="Maryland Legal Aid"
             width={24}
             height={40}
-            className="w-6 h-auto mb-auto"
+            className="w-6 h-auto"
           />
-          <ThemeToggle />
-          <button
-            onClick={toggle}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-sidebar-text-active hover:bg-sidebar-hover transition-colors"
-            aria-label="Expand sidebar"
-          >
-            <PanelLeft className="w-4 h-4" />
-          </button>
         </div>
       )}
+      <button
+        onClick={toggle}
+        className="absolute top-8 -right-4 z-20 w-8 h-8 rounded-full bg-sidebar border border-border/40 flex items-center justify-center text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-active transition-colors shadow-md"
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {collapsed
+          ? <PanelLeft className="w-3.5 h-3.5" />
+          : <PanelLeftClose className="w-3.5 h-3.5" />
+        }
+      </button>
     </div>
   );
 }

@@ -25,7 +25,7 @@
   /* Sidebar */
   --color-sidebar: #094A6B;
   --color-sidebar-hover: #0b5a82;
-  --color-sidebar-text: #87CCC3;
+  --color-sidebar-text: #b8e6df;
   --color-sidebar-text-active: #ffffff;
 
   /* Typography scale */
@@ -41,7 +41,7 @@
   --color-ink: #f1f5f9;
   --color-ink-light: #cbd5e1;
   --color-ink-muted: #94a3b8;
-  --color-parchment: #0f172a;
+  --color-parchment: #141e30;
   --color-parchment-warm: #1e293b;
   --color-parchment-dark: #334155;
   --color-accent: #5B8DE0;
@@ -56,9 +56,9 @@
   --color-teal: #5eead4;
   --color-bright-blue: #93B8F0;
 
-  --color-sidebar: #0c1929;
-  --color-sidebar-hover: #162033;
-  --color-sidebar-text: #94a3b8;
+  --color-sidebar: #061320;
+  --color-sidebar-hover: #0e1d2e;
+  --color-sidebar-text: #c8d5e3;
   --color-sidebar-text-active: #f1f5f9;
 }
 
