@@ -35,7 +35,7 @@ export function SearchBar() {
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
   return (
-    <form onSubmit={handleSubmit} className="relative w-full max-w-md">
+    <form onSubmit={handleSubmit} className="relative w-full max-w-[56rem]">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted pointer-events-none" />
       <input
         ref={inputRef}

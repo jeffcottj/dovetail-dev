@@ -33,7 +33,7 @@ function TreeItem({
 }: TreeItemProps) {
   const pathname = usePathname();
   const toast = useToast();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(depth > 0);
   const hasChildren = node.children.length > 0;
   const categoryPath = [...slugPath, node.slug];
   const isActive = pathname === `/categories/${categoryPath.join('/')}`;
@@ -67,7 +67,7 @@ function TreeItem({
     <li>
       <div
         className={`
-          flex items-center gap-1 px-4 py-1.5 text-sm font-[family-name:var(--font-ui)]
+          flex items-center gap-1 px-4 py-1.5 ${depth === 0 ? 'text-[15px] font-medium' : 'text-sm'} font-[family-name:var(--font-ui)]
           transition-colors duration-150 cursor-pointer group
           ${isActive ? 'bg-sidebar-hover text-sidebar-text-active' : 'hover:bg-sidebar-hover hover:text-sidebar-text-active'}
         `}

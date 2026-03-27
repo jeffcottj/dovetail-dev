@@ -5,6 +5,7 @@ import { Sidebar } from '../../components/Sidebar';
 import { SidebarWrapper } from '../../components/SidebarWrapper';
 import { SearchBar } from '../../components/SearchBar';
 import { RoleGate } from '../../components/RoleGate';
+import { HeaderUserArea } from '../../components/HeaderUserArea';
 import { Button } from '../../components/ui/Button';
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -17,20 +18,23 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <Sidebar />
       </SidebarWrapper>
       <div className="flex-1 flex flex-col">
-        <header className="border-b border-border-light px-8 py-4 flex items-center justify-end gap-3">
-            <Suspense>
-              <SearchBar />
-            </Suspense>
+        <header className="border-b border-border-light px-6 py-3 flex items-center justify-between">
+          <div className="flex flex-1 items-center gap-3">
             <RoleGate minimumRole="editor">
               <Link href="/articles/new">
-                <Button size="sm">
-                  <FilePlus className="w-4 h-4" />
+                <Button size="sm" className="whitespace-nowrap">
+                  <FilePlus className="w-5 h-5" />
                   New Article
                 </Button>
               </Link>
             </RoleGate>
+            <Suspense>
+              <SearchBar />
+            </Suspense>
+          </div>
+          <HeaderUserArea />
         </header>
-        <main id="main-content" className="flex-1 p-8 max-w-4xl">{children}</main>
+        <main id="main-content" className="flex-1 p-8">{children}</main>
       </div>
     </div>
   );

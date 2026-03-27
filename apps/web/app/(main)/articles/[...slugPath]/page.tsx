@@ -128,7 +128,7 @@ async function renderViewPage(slugPath: string[]) {
         </div>
       </header>
 
-      <div className="max-w-prose">
+      <div>
         <ArticleContent content={article.content} />
       </div>
     </article>

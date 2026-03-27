@@ -4,7 +4,6 @@ import { apiFetch } from '../lib/api';
 import { auth } from '../auth';
 import type { Category, Role } from '@dovetail/types';
 import { SidebarCategories } from './SidebarCategories';
-import { UserMenu } from './UserMenu';
 
 export async function Sidebar() {
   let categories: Category[] = [];
@@ -19,14 +18,14 @@ export async function Sidebar() {
 
   return (
     <>
-      <div className="p-4 border-b border-sidebar-hover">
+      <div className="h-24 flex items-center px-4 border-b border-sidebar-hover shrink-0">
         <Link href="/" className="block">
           <Image
-            src="/logos/mla-secondary-white.png"
+            src="/logos/mla-primary-white.png"
             alt="Maryland Legal Aid"
             width={220}
             height={92}
-            className="w-full h-auto"
+            className="w-auto"
             priority
           />
         </Link>
@@ -35,8 +34,6 @@ export async function Sidebar() {
       <nav aria-label="Categories" className="flex-1 overflow-y-auto py-3">
         <SidebarCategories categories={categories} userRole={userRole} />
       </nav>
-
-      <UserMenu />
     </>
   );
 }
