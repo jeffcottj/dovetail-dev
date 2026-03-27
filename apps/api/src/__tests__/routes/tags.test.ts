@@ -25,6 +25,7 @@ describe('Tag routes', () => {
   let viewerToken: string;
   let editorToken: string;
   let adminToken: string;
+  const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -33,9 +34,11 @@ describe('Tag routes', () => {
     adminToken = await makeToken({ sub: 'user-3', role: 'admin' });
   });
 
-  describe('GET /api/tags', () => {
+  describe('GET /api/knowledge-bases/kb-1/tags', () => {
     it('returns 401 without auth', async () => {
-      const res = await supertest(app).get('/api/tags');
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      const res = await supertest(app).get('/api/knowledge-bases/kb-1/tags');
       expect(res.status).toBe(401);
     });
 
@@ -44,10 +47,12 @@ describe('Tag routes', () => {
         { id: 'tag-1', name: 'Eviction', slug: 'eviction' },
         { id: 'tag-2', name: 'Housing', slug: 'housing' },
       ];
-      (db.select as Mock).mockReturnValue(createChain(mockTags));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain(mockTags));
 
       const res = await supertest(app)
-        .get('/api/tags')
+        .get('/api/knowledge-bases/kb-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -56,10 +61,12 @@ describe('Tag routes', () => {
     });
   });
 
-  describe('POST /api/tags', () => {
+  describe('POST /api/knowledge-bases/kb-1/tags', () => {
     it('returns 403 for viewer', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/tags')
+        .post('/api/knowledge-bases/kb-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
         .send({ name: 'Test' });
       expect(res.status).toBe(403);
@@ -67,10 +74,11 @@ describe('Tag routes', () => {
 
     it('creates a tag for editor', async () => {
       const created = { id: 'tag-new', name: 'Landlord-Tenant', slug: 'landlord-tenant' };
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.insert as Mock).mockReturnValue(createChain([created]));
 
       const res = await supertest(app)
-        .post('/api/tags')
+        .post('/api/knowledge-bases/kb-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ name: 'Landlord-Tenant' });
 
@@ -80,35 +88,45 @@ describe('Tag routes', () => {
     });
 
     it('returns 400 for missing name', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/tags')
+        .post('/api/knowledge-bases/kb-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({});
       expect(res.status).toBe(400);
     });
   });
 
-  describe('DELETE /api/tags/:id', () => {
+  describe('DELETE /api/knowledge-bases/kb-1/tags/:id', () => {
     it('returns 403 for non-admin', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .delete('/api/tags/tag-1')
+        .delete('/api/knowledge-bases/kb-1/tags/tag-1')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
       expect(res.status).toBe(403);
     });
 
     it('deletes tag for admin', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.delete as Mock).mockReturnValue(createChain(undefined));
 
       const res = await supertest(app)
-        .delete('/api/tags/tag-1')
+        .delete('/api/knowledge-bases/kb-1/tags/tag-1')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(204);
     });
   });
 
-  describe('GET /api/articles/:id/tags', () => {
+  describe('GET /api/knowledge-bases/kb-1/articles/:id/tags', () => {
     it('returns 401 without auth', async () => {
-      const res = await supertest(app).get('/api/articles/article-1/tags');
+      // resolveKb runs for both /articles and /articles/:id/tags mounts
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockKb]));
+
+      const res = await supertest(app).get('/api/knowledge-bases/kb-1/articles/article-1/tags');
       expect(res.status).toBe(401);
     });
 
@@ -117,10 +135,14 @@ describe('Tag routes', () => {
         { id: 'tag-1', name: 'Eviction', slug: 'eviction' },
         { id: 'tag-2', name: 'Housing', slug: 'housing' },
       ];
-      (db.select as Mock).mockReturnValue(createChain(mockTags));
+      // resolveKb runs for /articles mount, then /articles/:id/tags mount, then handler
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain(mockTags));
 
       const res = await supertest(app)
-        .get('/api/articles/article-1/tags')
+        .get('/api/knowledge-bases/kb-1/articles/article-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -129,10 +151,14 @@ describe('Tag routes', () => {
     });
   });
 
-  describe('POST /api/articles/:id/tags', () => {
+  describe('POST /api/knowledge-bases/kb-1/articles/:id/tags', () => {
     it('returns 403 for viewer', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/articles/article-1/tags')
+        .post('/api/knowledge-bases/kb-1/articles/article-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
         .send({ tagIds: ['tag-1'] });
       expect(res.status).toBe(403);
@@ -140,12 +166,15 @@ describe('Tag routes', () => {
 
     it('assigns tags to article for editor', async () => {
       const tagId = '00000000-0000-4000-8000-000000000001';
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockKb]));
       (db.insert as Mock).mockReturnValue(createChain([
         { articleId: 'article-1', tagId },
       ]));
 
       const res = await supertest(app)
-        .post('/api/articles/article-1/tags')
+        .post('/api/knowledge-bases/kb-1/articles/article-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ tagIds: [tagId] });
 
@@ -153,27 +182,38 @@ describe('Tag routes', () => {
     });
 
     it('returns 400 for missing tagIds', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/articles/article-1/tags')
+        .post('/api/knowledge-bases/kb-1/articles/article-1/tags')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({});
       expect(res.status).toBe(400);
     });
   });
 
-  describe('DELETE /api/articles/:id/tags/:tagId', () => {
+  describe('DELETE /api/knowledge-bases/kb-1/articles/:id/tags/:tagId', () => {
     it('returns 403 for viewer', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .delete('/api/articles/article-1/tags/tag-1')
+        .delete('/api/knowledge-bases/kb-1/articles/article-1/tags/tag-1')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
       expect(res.status).toBe(403);
     });
 
     it('removes tag from article for editor', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockKb]));
       (db.delete as Mock).mockReturnValue(createChain(undefined));
 
       const res = await supertest(app)
-        .delete('/api/articles/article-1/tags/tag-1')
+        .delete('/api/knowledge-bases/kb-1/articles/article-1/tags/tag-1')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
       expect(res.status).toBe(204);
     });

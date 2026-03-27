@@ -7,7 +7,7 @@ import { requireRole } from '../middleware/requireRole.js';
 import { validateBody } from '../utils/validate.js';
 import { toSlug } from '../utils/slug.js';
 
-export const tagsRouter: Router = Router();
+export const tagsRouter: Router = Router({ mergeParams: true });
 
 const createTagSchema = z.object({
   name: z.string().min(1).max(100),
@@ -17,23 +17,25 @@ const assignTagsSchema = z.object({
   tagIds: z.array(z.string().uuid()).min(1),
 });
 
-// GET /api/tags — list all tags
-tagsRouter.get('/', authMiddleware, async (_req, res) => {
-  const result = await db.select().from(tags);
+// GET /api/knowledge-bases/:kbId/tags — list all tags
+tagsRouter.get('/', authMiddleware, async (req, res) => {
+  const kbId = req.params.kbId as string;
+  const result = await db.select().from(tags).where(eq(tags.knowledgeBaseId, kbId));
   res.json(result);
 });
 
-// POST /api/tags — create tag
+// POST /api/knowledge-bases/:kbId/tags — create tag
 tagsRouter.post('/', authMiddleware, requireRole('editor'), validateBody(createTagSchema), async (req, res) => {
   const { name } = req.body;
   const slug = toSlug(name);
+  const kbId = req.params.kbId as string;
   try {
-    const [created] = await db.insert(tags).values({ name, slug }).returning();
+    const [created] = await db.insert(tags).values({ name, slug, knowledgeBaseId: kbId }).returning();
     res.status(201).json(created);
   } catch (err: any) {
     if (err.code === '23505') {
       const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
-      const [created] = await db.insert(tags).values({ name, slug: uniqueSlug }).returning();
+      const [created] = await db.insert(tags).values({ name, slug: uniqueSlug, knowledgeBaseId: kbId }).returning();
       res.status(201).json(created);
     } else {
       throw err;

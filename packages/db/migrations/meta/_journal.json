@@ -36,6 +36,13 @@
       "when": 1773964800000,
       "tag": "0004_slug_per_category",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774643359217,
+      "tag": "0005_add_knowledge_bases",
+      "breakpoints": true
     }
   ]
 }

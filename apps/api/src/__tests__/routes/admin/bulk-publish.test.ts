@@ -21,7 +21,9 @@ vi.mock('@dovetail/db', async (importOriginal) => {
 import { app } from '../../../app.js';
 import { db } from '@dovetail/db';
 
-describe('POST /api/admin/articles/bulk-publish', () => {
+const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
+
+describe('POST /api/knowledge-bases/:kbId/admin/articles/bulk-publish', () => {
   let adminToken: string;
   let editorToken: string;
 
@@ -32,19 +34,21 @@ describe('POST /api/admin/articles/bulk-publish', () => {
   });
 
   it('returns 403 for non-admin users', async () => {
+    (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
     const res = await supertest(app)
-      .post('/api/admin/articles/bulk-publish')
+      .post('/api/knowledge-bases/kb-1/admin/articles/bulk-publish')
       .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
       .send({});
     expect(res.status).toBe(403);
   });
 
   it('publishes all draft articles when no importJobId given', async () => {
+    (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
     const updateChain = createChain([{ id: '1' }, { id: '2' }]);
     (db.update as Mock).mockReturnValue(updateChain);
 
     const res = await supertest(app)
-      .post('/api/admin/articles/bulk-publish')
+      .post('/api/knowledge-bases/kb-1/admin/articles/bulk-publish')
       .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
       .send({});
 

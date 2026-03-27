@@ -38,7 +38,7 @@ describe('Admin API key routes', () => {
       const res = await supertest(app)
         .post('/api/admin/api-keys')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
-        .send({ name: 'Test Key' });
+        .send({ name: 'Test Key', knowledgeBaseIds: ['00000000-0000-4000-8000-000000000001'] });
       expect(res.status).toBe(403);
     });
 
@@ -46,7 +46,7 @@ describe('Admin API key routes', () => {
       const res = await supertest(app)
         .post('/api/admin/api-keys')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
-        .send({});
+        .send({ knowledgeBaseIds: ['00000000-0000-4000-8000-000000000001'] });
       expect(res.status).toBe(400);
     });
 
@@ -60,12 +60,15 @@ describe('Admin API key routes', () => {
         lastUsedAt: null,
         revokedAt: null,
       }]);
+      // Mock apiKeys insert
       (db.insert as Mock).mockReturnValueOnce(insertChain);
+      // Mock apiKeyKnowledgeBases insert
+      (db.insert as Mock).mockReturnValueOnce(createChain([]));
 
       const res = await supertest(app)
         .post('/api/admin/api-keys')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
-        .send({ name: 'Test Key' });
+        .send({ name: 'Test Key', knowledgeBaseIds: ['00000000-0000-4000-8000-000000000001'] });
 
       expect(res.status).toBe(201);
       expect(res.body.id).toBe(KEY_ID);
@@ -73,6 +76,7 @@ describe('Admin API key routes', () => {
       expect(res.body.key).toBeDefined();
       expect(typeof res.body.key).toBe('string');
       expect(res.body.key.length).toBeGreaterThan(0);
+      expect(res.body.knowledgeBaseIds).toEqual(['00000000-0000-4000-8000-000000000001']);
     });
   });
 
@@ -95,7 +99,10 @@ describe('Admin API key routes', () => {
           revokedAt: null,
         },
       ]);
+      // Mock keys list
       (db.select as Mock).mockReturnValueOnce(chain);
+      // Mock KB associations for the key
+      (db.select as Mock).mockReturnValueOnce(createChain([{ knowledgeBaseId: '00000000-0000-4000-8000-000000000001' }]));
 
       const res = await supertest(app)
         .get('/api/admin/api-keys')
@@ -104,6 +111,7 @@ describe('Admin API key routes', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
       expect(res.body[0].name).toBe('Test Key');
+      expect(res.body[0].knowledgeBaseIds).toEqual(['00000000-0000-4000-8000-000000000001']);
     });
   });
 

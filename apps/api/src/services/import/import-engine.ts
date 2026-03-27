@@ -21,6 +21,7 @@ export interface ImportEngineOptions {
   userId: string;
   defaultStatus: 'draft' | 'published';
   jobId: string;
+  knowledgeBaseId: string;
 }
 
 export class ImportEngine {
@@ -121,8 +122,8 @@ export class ImportEngine {
         .from(categories)
         .where(
           parentId
-            ? and(eq(categories.slug, slug), eq(categories.parentId, parentId))
-            : and(eq(categories.slug, slug), sql`${categories.parentId} IS NULL`),
+            ? and(eq(categories.slug, slug), eq(categories.parentId, parentId), eq(categories.knowledgeBaseId, this.opts.knowledgeBaseId))
+            : and(eq(categories.slug, slug), sql`${categories.parentId} IS NULL`, eq(categories.knowledgeBaseId, this.opts.knowledgeBaseId)),
         );
 
       let categoryId: string;
@@ -132,14 +133,14 @@ export class ImportEngine {
         // Create new category
         try {
           const [created] = await db.insert(categories)
-            .values({ name: node.name, slug, parentId })
+            .values({ name: node.name, slug, parentId, knowledgeBaseId: this.opts.knowledgeBaseId })
             .returning();
           categoryId = created.id;
         } catch (err: any) {
           if (err.code === '23505') {
             const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
             const [created] = await db.insert(categories)
-              .values({ name: node.name, slug: uniqueSlug, parentId })
+              .values({ name: node.name, slug: uniqueSlug, parentId, knowledgeBaseId: this.opts.knowledgeBaseId })
               .returning();
             categoryId = created.id;
           } else {

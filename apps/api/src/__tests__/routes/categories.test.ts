@@ -22,6 +22,8 @@ vi.mock('@dovetail/db', async (importOriginal) => {
 import { app } from '../../app.js';
 import { db } from '@dovetail/db';
 
+const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
+
 describe('Category routes', () => {
   let viewerToken: string;
   let editorToken: string;
@@ -34,9 +36,11 @@ describe('Category routes', () => {
     adminToken = await makeToken({ sub: 'user-3', role: 'admin' });
   });
 
-  describe('GET /api/categories', () => {
+  describe('GET /api/knowledge-bases/kb-1/categories', () => {
     it('returns 401 without auth', async () => {
-      const res = await supertest(app).get('/api/categories');
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      const res = await supertest(app).get('/api/knowledge-bases/kb-1/categories');
       expect(res.status).toBe(401);
     });
 
@@ -44,10 +48,12 @@ describe('Category routes', () => {
       const mockCategories = [
         { id: 'cat-1', name: 'General', slug: 'general', parentId: null, createdAt: new Date() },
       ];
-      (db.select as Mock).mockReturnValue(createChain(mockCategories));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain(mockCategories));
 
       const res = await supertest(app)
-        .get('/api/categories')
+        .get('/api/knowledge-bases/kb-1/categories')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -56,10 +62,12 @@ describe('Category routes', () => {
     });
   });
 
-  describe('POST /api/categories', () => {
+  describe('POST /api/knowledge-bases/kb-1/categories', () => {
     it('returns 403 for viewer', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/categories')
+        .post('/api/knowledge-bases/kb-1/categories')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
         .send({ name: 'Test' });
       expect(res.status).toBe(403);
@@ -67,10 +75,11 @@ describe('Category routes', () => {
 
     it('creates a category for editor', async () => {
       const created = { id: 'cat-new', name: 'Housing Law', slug: 'housing-law', parentId: null, createdAt: new Date() };
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.insert as Mock).mockReturnValue(createChain([created]));
 
       const res = await supertest(app)
-        .post('/api/categories')
+        .post('/api/knowledge-bases/kb-1/categories')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ name: 'Housing Law' });
 
@@ -80,21 +89,24 @@ describe('Category routes', () => {
     });
 
     it('returns 400 for missing name', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/categories')
+        .post('/api/knowledge-bases/kb-1/categories')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({});
       expect(res.status).toBe(400);
     });
   });
 
-  describe('PATCH /api/categories/:id', () => {
+  describe('PATCH /api/knowledge-bases/kb-1/categories/:id', () => {
     it('updates a category for editor', async () => {
       const updated = { id: 'cat-1', name: 'Updated', slug: 'updated', parentId: null, createdAt: new Date() };
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.update as Mock).mockReturnValue(createChain([updated]));
 
       const res = await supertest(app)
-        .patch('/api/categories/cat-1')
+        .patch('/api/knowledge-bases/kb-1/categories/cat-1')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ name: 'Updated' });
 
@@ -103,10 +115,11 @@ describe('Category routes', () => {
     });
 
     it('returns 404 when category not found', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.update as Mock).mockReturnValue(createChain([]));
 
       const res = await supertest(app)
-        .patch('/api/categories/nonexistent')
+        .patch('/api/knowledge-bases/kb-1/categories/nonexistent')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ name: 'Updated' });
 
@@ -114,42 +127,48 @@ describe('Category routes', () => {
     });
   });
 
-  describe('DELETE /api/categories/:id', () => {
+  describe('DELETE /api/knowledge-bases/kb-1/categories/:id', () => {
     it('returns 403 for non-admin', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .delete('/api/categories/cat-1')
+        .delete('/api/knowledge-bases/kb-1/categories/cat-1')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
       expect(res.status).toBe(403);
     });
 
     it('returns 409 when category has children', async () => {
-      (db.select as Mock).mockReturnValueOnce(createChain([{ count: 1 }]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([{ count: 1 }]));
 
       const res = await supertest(app)
-        .delete('/api/categories/cat-1')
+        .delete('/api/knowledge-bases/kb-1/categories/cat-1')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(409);
     });
 
     it('returns 409 when category has articles', async () => {
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(createChain([{ count: 0 }]))
         .mockReturnValueOnce(createChain([{ count: 1 }]));
 
       const res = await supertest(app)
-        .delete('/api/categories/cat-1')
+        .delete('/api/knowledge-bases/kb-1/categories/cat-1')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(409);
     });
 
     it('deletes category when no children or articles', async () => {
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(createChain([{ count: 0 }]))
         .mockReturnValueOnce(createChain([{ count: 0 }]));
       (db.delete as Mock).mockReturnValue(createChain(undefined));
 
       const res = await supertest(app)
-        .delete('/api/categories/cat-1')
+        .delete('/api/knowledge-bases/kb-1/categories/cat-1')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(204);
     });

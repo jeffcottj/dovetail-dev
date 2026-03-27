@@ -8,7 +8,7 @@ import { paginationSchema, paginate } from '../utils/pagination.js';
 import { createEmbeddingProvider } from '../services/embeddings.js';
 import { buildCategoryPath } from '../utils/category-path.js';
 
-export const searchRouter: Router = Router();
+export const searchRouter: Router = Router({ mergeParams: true });
 
 const searchQuerySchema = paginationSchema.extend({
   q: z.string().min(1),
@@ -42,6 +42,7 @@ function reciprocalRankFusion(
 
 // Build WHERE conditions shared by fulltext and hybrid modes
 function buildFilterConditions(params: {
+  knowledgeBaseId: string;
   categoryId?: string;
   authorId?: string;
   from?: string;
@@ -50,6 +51,10 @@ function buildFilterConditions(params: {
 }) {
   const conditions: ReturnType<typeof eq>[] = [];
   conditions.push(eq(articles.status, 'published'));
+  // Scope to KB via categories
+  conditions.push(
+    inArray(articles.categoryId, sql`(SELECT id FROM categories WHERE knowledge_base_id = ${params.knowledgeBaseId})`),
+  );
   if (params.categoryId) conditions.push(eq(articles.categoryId, params.categoryId));
   if (params.authorId) conditions.push(eq(articles.authorId, params.authorId));
   if (params.from) conditions.push(gte(articles.createdAt, new Date(params.from)));
@@ -104,11 +109,12 @@ async function fulltextSearch(q: string, conditions: ReturnType<typeof eq>[], li
 }
 
 // Semantic search using pgvector cosine similarity
-async function semanticSearch(q: string, limit: number, categoryId?: string) {
+async function semanticSearch(q: string, limit: number, knowledgeBaseId: string, categoryId?: string) {
   const provider = createEmbeddingProvider();
   const queryEmbedding = await provider.embed(q);
   const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
+  const kbFilter = sql`AND a.category_id IN (SELECT id FROM categories WHERE knowledge_base_id = ${knowledgeBaseId})`;
   const categoryFilter = categoryId
     ? sql`AND a.category_id = ${categoryId}`
     : sql``;
@@ -120,7 +126,7 @@ async function semanticSearch(q: string, limit: number, categoryId?: string) {
            a.status, a.created_at, a.updated_at
     FROM article_embeddings ae
     JOIN articles a ON a.id = ae.article_id
-    WHERE a.status = 'published' ${categoryFilter}
+    WHERE a.status = 'published' ${kbFilter} ${categoryFilter}
     ORDER BY ae.embedding <=> ${vectorLiteral}::vector
     LIMIT ${limit}
   `);
@@ -144,28 +150,29 @@ async function semanticSearch(q: string, limit: number, categoryId?: string) {
   return enriched;
 }
 
-searchRouter.get('/', authMiddleware, validateQuery(searchQuerySchema), async (_req, res) => {
+searchRouter.get('/', authMiddleware, validateQuery(searchQuerySchema), async (req, res) => {
+  const kbId = req.params.kbId as string;
   const { q, mode, categoryId, authorId, from, to, tags: tagFilter, page, limit } = res.locals.query as z.infer<typeof searchQuerySchema>;
   const offset = (page - 1) * limit;
 
   if (mode === 'fulltext') {
-    const conditions = buildFilterConditions({ categoryId, authorId, from, to, tags: tagFilter });
+    const conditions = buildFilterConditions({ knowledgeBaseId: kbId, categoryId, authorId, from, to, tags: tagFilter });
     const { data, total } = await fulltextSearch(q, conditions, limit, offset);
     res.json(paginate(data, total, { page, limit }));
     return;
   }
 
   if (mode === 'semantic') {
-    const results = await semanticSearch(q, limit, categoryId);
+    const results = await semanticSearch(q, limit, kbId, categoryId);
     res.json(paginate(results, results.length, { page, limit }));
     return;
   }
 
   // mode === 'hybrid': run both in parallel, merge with RRF
-  const conditions = buildFilterConditions({ categoryId, authorId, from, to, tags: tagFilter });
+  const conditions = buildFilterConditions({ knowledgeBaseId: kbId, categoryId, authorId, from, to, tags: tagFilter });
   const [fulltextResult, semanticResults] = await Promise.all([
     fulltextSearch(q, conditions, limit, offset),
-    semanticSearch(q, limit, categoryId),
+    semanticSearch(q, limit, kbId, categoryId),
   ]);
 
   const rankedIds = reciprocalRankFusion(fulltextResult.data, semanticResults);

@@ -45,6 +45,8 @@ const mockArticle = {
   publishedAt: null,
 };
 
+const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
+
 describe('Article routes', () => {
   let viewerToken: string;
   let editorToken: string;
@@ -55,21 +57,22 @@ describe('Article routes', () => {
     editorToken = await makeToken({ sub: 'user-2', role: 'editor' });
   });
 
-  describe('GET /api/articles', () => {
+  describe('GET /api/knowledge-bases/kb-1/articles', () => {
     it('returns 401 without auth', async () => {
-      const res = await supertest(app).get('/api/articles');
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      const res = await supertest(app).get('/api/knowledge-bases/kb-1/articles');
       expect(res.status).toBe(401);
     });
 
     it('returns paginated list of articles', async () => {
-      const countChain = createChain([{ count: 1 }]);
-      const dataChain = createChain([mockArticle]);
       (db.select as Mock)
-        .mockReturnValueOnce(countChain)
-        .mockReturnValueOnce(dataChain);
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([{ count: 1 }]))
+        .mockReturnValueOnce(createChain([mockArticle]));
 
       const res = await supertest(app)
-        .get('/api/articles?page=1&limit=10')
+        .get('/api/knowledge-bases/kb-1/articles?page=1&limit=10')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -79,12 +82,14 @@ describe('Article routes', () => {
     });
   });
 
-  describe('GET /api/articles/:id', () => {
+  describe('GET /api/knowledge-bases/kb-1/articles/:id', () => {
     it('returns a single article', async () => {
-      (db.select as Mock).mockReturnValue(createChain([mockArticle]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]));
 
       const res = await supertest(app)
-        .get(`/api/articles/${ART_ID}`)
+        .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -92,23 +97,26 @@ describe('Article routes', () => {
     });
 
     it('returns 404 when not found', async () => {
-      (db.select as Mock).mockReturnValue(createChain([]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([]));
 
       const res = await supertest(app)
-        .get('/api/articles/nonexistent')
+        .get('/api/knowledge-bases/kb-1/articles/nonexistent')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(404);
     });
   });
 
-  describe('GET /api/articles/by-path/*', () => {
+  describe('GET /api/knowledge-bases/kb-1/articles/by-path/*', () => {
     it('returns article by category path and slug', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (resolveCategoryPath as Mock).mockResolvedValueOnce(CAT_ID);
-      (db.select as Mock).mockReturnValue(createChain([mockArticle]));
+      (db.select as Mock).mockReturnValueOnce(createChain([mockArticle]));
 
       const res = await supertest(app)
-        .get('/api/articles/by-path/housing/test-article')
+        .get('/api/knowledge-bases/kb-1/articles/by-path/housing/test-article')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -116,20 +124,23 @@ describe('Article routes', () => {
     });
   });
 
-  describe('POST /api/articles', () => {
+  describe('POST /api/knowledge-bases/kb-1/articles', () => {
     it('returns 403 for viewer', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/articles')
+        .post('/api/knowledge-bases/kb-1/articles')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
         .send({ title: 'Test', categoryId: CAT_ID, content: {} });
       expect(res.status).toBe(403);
     });
 
     it('creates a draft article for editor', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.insert as Mock).mockReturnValue(createChain([mockArticle]));
 
       const res = await supertest(app)
-        .post('/api/articles')
+        .post('/api/knowledge-bases/kb-1/articles')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ title: 'Test Article', categoryId: CAT_ID, content: {} });
 
@@ -138,11 +149,12 @@ describe('Article routes', () => {
     });
 
     it('includes categoryPath in the response', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.insert as Mock).mockReturnValue(createChain([mockArticle]));
       (buildCategoryPath as Mock).mockResolvedValueOnce(['housing', 'rental']);
 
       const res = await supertest(app)
-        .post('/api/articles')
+        .post('/api/knowledge-bases/kb-1/articles')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ title: 'Test Article', categoryId: CAT_ID, content: {} });
 
@@ -152,22 +164,27 @@ describe('Article routes', () => {
     });
 
     it('returns 400 for missing title', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       const res = await supertest(app)
-        .post('/api/articles')
+        .post('/api/knowledge-bases/kb-1/articles')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ categoryId: CAT_ID });
       expect(res.status).toBe(400);
     });
   });
 
-  describe('PATCH /api/articles/:id', () => {
+  describe('PATCH /api/knowledge-bases/kb-1/articles/:id', () => {
     it('updates article and creates version', async () => {
       const updated = { ...mockArticle, title: 'Updated Title' };
+
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
 
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
         const tx = {
           select: vi.fn()
-            .mockReturnValueOnce(createChain([mockArticle]))  // fetch current
+            .mockReturnValueOnce(createChain([mockArticle]))  // fetch current article
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))  // get category KB
             .mockReturnValueOnce(createChain([{ max: 0 }])),   // max version
           insert: vi.fn().mockReturnValue(createChain([])),     // insert version
           update: vi.fn().mockReturnValue(createChain([updated])), // update article
@@ -179,7 +196,7 @@ describe('Article routes', () => {
       (db.execute as Mock).mockResolvedValue([]);
 
       const res = await supertest(app)
-        .patch(`/api/articles/${ART_ID}`)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ title: 'Updated Title' });
 
@@ -188,6 +205,8 @@ describe('Article routes', () => {
     });
 
     it('returns 404 when article not found', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
         const tx = {
           select: vi.fn().mockReturnValue(createChain([])),
@@ -199,7 +218,7 @@ describe('Article routes', () => {
       (db.execute as Mock).mockResolvedValue([]);
 
       const res = await supertest(app)
-        .patch('/api/articles/nonexistent')
+        .patch('/api/knowledge-bases/kb-1/articles/nonexistent')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ title: 'Updated' });
 
@@ -207,13 +226,14 @@ describe('Article routes', () => {
     });
   });
 
-  describe('DELETE /api/articles/:id', () => {
+  describe('DELETE /api/knowledge-bases/kb-1/articles/:id', () => {
     it('archives article (soft delete)', async () => {
       const archived = { ...mockArticle, status: 'archived' };
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.update as Mock).mockReturnValue(createChain([archived]));
 
       const res = await supertest(app)
-        .delete(`/api/articles/${ART_ID}`)
+        .delete(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(200);
@@ -221,13 +241,14 @@ describe('Article routes', () => {
     });
   });
 
-  describe('POST /api/articles/:id/publish', () => {
+  describe('POST /api/knowledge-bases/kb-1/articles/:id/publish', () => {
     it('publishes a draft article', async () => {
       const published = { ...mockArticle, status: 'published', publishedAt: new Date() };
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.update as Mock).mockReturnValue(createChain([published]));
 
       const res = await supertest(app)
-        .post(`/api/articles/${ART_ID}/publish`)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(200);
@@ -235,10 +256,11 @@ describe('Article routes', () => {
     });
 
     it('returns 404 when article not found', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.update as Mock).mockReturnValue(createChain([]));
 
       const res = await supertest(app)
-        .post('/api/articles/nonexistent/publish')
+        .post('/api/knowledge-bases/kb-1/articles/nonexistent/publish')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(404);

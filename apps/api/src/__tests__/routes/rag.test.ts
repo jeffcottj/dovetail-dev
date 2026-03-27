@@ -37,6 +37,8 @@ import { db } from '@dovetail/db';
 const TEST_API_KEY = 'test-api-key-for-rag';
 const TEST_KEY_HASH = createHash('sha256').update(TEST_API_KEY).digest('hex');
 const KEY_ID = '00000000-0000-4000-8000-000000000099';
+const KB_ID = '00000000-0000-4000-8000-000000000001';
+const KB_UNAUTHORIZED_ID = '00000000-0000-4000-8000-000000000002';
 
 function mockValidApiKey() {
   const chain = createChain([{
@@ -53,6 +55,10 @@ function mockValidApiKey() {
   // Mock the fire-and-forget lastUsedAt update
   const updateChain = createChain([]);
   (db.update as Mock).mockReturnValueOnce(updateChain);
+
+  // Mock KB associations for the API key
+  const kbChain = createChain([{ knowledgeBaseId: KB_ID }]);
+  (db.select as Mock).mockReturnValueOnce(kbChain);
 }
 
 describe('RAG search endpoint', () => {
@@ -73,8 +79,26 @@ describe('RAG search endpoint', () => {
       const res = await supertest(app)
         .post('/api/v1/rag/search')
         .set('Authorization', `Bearer ${TEST_API_KEY}`)
-        .send({});
+        .send({ knowledgeBaseIds: [KB_ID] });
       expect(res.status).toBe(400);
+    });
+
+    it('returns 400 when knowledgeBaseIds is missing', async () => {
+      mockValidApiKey();
+      const res = await supertest(app)
+        .post('/api/v1/rag/search')
+        .set('Authorization', `Bearer ${TEST_API_KEY}`)
+        .send({ query: 'test' });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 403 when API key lacks access to requested KB', async () => {
+      mockValidApiKey();
+      const res = await supertest(app)
+        .post('/api/v1/rag/search')
+        .set('Authorization', `Bearer ${TEST_API_KEY}`)
+        .send({ query: 'test', knowledgeBaseIds: [KB_UNAUTHORIZED_ID] });
+      expect(res.status).toBe(403);
     });
 
     it('returns formatted chunks for a valid query', async () => {
@@ -89,6 +113,7 @@ describe('RAG search endpoint', () => {
           similarity: '0.94',
           title: 'Notice Requirements',
           slug: 'notice-requirements',
+          category_id: 'cat-1',
         },
         {
           article_id: '00000000-0000-4000-8000-000000000020',
@@ -97,20 +122,28 @@ describe('RAG search endpoint', () => {
           similarity: '0.87',
           title: 'Landlord Obligations',
           slug: 'landlord-obligations',
+          category_id: 'cat-2',
         },
       ]);
+
+      // For each result: category lookup + KB lookup
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: KB_ID }]))  // cat lookup for result 1
+        .mockReturnValueOnce(createChain([{ slug: 'default' }]))          // KB lookup for result 1
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: KB_ID }]))  // cat lookup for result 2
+        .mockReturnValueOnce(createChain([{ slug: 'default' }]));         // KB lookup for result 2
 
       const res = await supertest(app)
         .post('/api/v1/rag/search')
         .set('Authorization', `Bearer ${TEST_API_KEY}`)
-        .send({ query: 'what is tenant law', limit: 5 });
+        .send({ query: 'what is tenant law', limit: 5, knowledgeBaseIds: [KB_ID] });
 
       expect(res.status).toBe(200);
       expect(res.body.results).toHaveLength(2);
       expect(res.body.results[0]).toEqual({
         articleId: '00000000-0000-4000-8000-000000000010',
         articleTitle: 'Notice Requirements',
-        articleUrl: '/articles/mock-category/notice-requirements',
+        articleUrl: '/kb/default/articles/mock-category/notice-requirements',
         categoryPath: ['mock-category'],
         chunkText: 'Tenants have the right to...',
         score: 0.94,
@@ -125,7 +158,7 @@ describe('RAG search endpoint', () => {
       const res = await supertest(app)
         .post('/api/v1/rag/search')
         .set('Authorization', `Bearer ${TEST_API_KEY}`)
-        .send({ query: 'completely unrelated query' });
+        .send({ query: 'completely unrelated query', knowledgeBaseIds: [KB_ID] });
 
       expect(res.status).toBe(200);
       expect(res.body.results).toHaveLength(0);
@@ -141,14 +174,21 @@ describe('RAG search endpoint', () => {
           similarity: '0.90',
           title: 'Article Title',
           slug: 'article-title',
+          category_id: 'cat-1',
         },
       ]);
+
+      // For each result: category lookup + KB lookup
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: KB_ID }]))
+        .mockReturnValueOnce(createChain([{ slug: 'default' }]));
 
       const res = await supertest(app)
         .post('/api/v1/rag/search')
         .set('Authorization', `Bearer ${TEST_API_KEY}`)
         .send({
           query: 'tenant law',
+          knowledgeBaseIds: [KB_ID],
           categoryIds: ['00000000-0000-4000-8000-000000000001'],
         });
 
@@ -163,7 +203,7 @@ describe('RAG search endpoint', () => {
       const res = await supertest(app)
         .post('/api/v1/rag/search')
         .set('Authorization', `Bearer ${TEST_API_KEY}`)
-        .send({ query: 'test' });
+        .send({ query: 'test', knowledgeBaseIds: [KB_ID] });
 
       expect(res.status).toBe(200);
       // Verify db.execute was called (query embedding + pgvector search)

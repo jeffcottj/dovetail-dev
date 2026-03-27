@@ -23,6 +23,7 @@ import { db } from '@dovetail/db';
 
 const ART_ID = '00000000-0000-4000-8000-000000000010';
 const VER_ID = '00000000-0000-4000-8000-000000000020';
+const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
 
 const mockVersion = {
   id: VER_ID,
@@ -47,6 +48,13 @@ const mockArticle = {
   publishedAt: null,
 };
 
+function mockResolveKb() {
+  // resolveKb runs twice: once at the /articles mount, once at the /articles/:id/versions mount
+  (db.select as Mock)
+    .mockReturnValueOnce(createChain([mockKb]))
+    .mockReturnValueOnce(createChain([mockKb]));
+}
+
 describe('Version history routes', () => {
   let viewerToken: string;
   let editorToken: string;
@@ -57,8 +65,9 @@ describe('Version history routes', () => {
     editorToken = await makeToken({ sub: 'user-2', role: 'editor' });
   });
 
-  describe('GET /api/articles/:id/versions', () => {
+  describe('GET /api/knowledge-bases/:kbId/articles/:id/versions', () => {
     it('returns paginated version list', async () => {
+      mockResolveKb();
       const countChain = createChain([{ count: 1 }]);
       const dataChain = createChain([mockVersion]);
       (db.select as Mock)
@@ -66,7 +75,7 @@ describe('Version history routes', () => {
         .mockReturnValueOnce(dataChain);
 
       const res = await supertest(app)
-        .get(`/api/articles/${ART_ID}/versions`)
+        .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}/versions`)
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -75,12 +84,13 @@ describe('Version history routes', () => {
     });
   });
 
-  describe('GET /api/articles/:id/versions/:versionId', () => {
+  describe('GET /api/knowledge-bases/:kbId/articles/:id/versions/:versionId', () => {
     it('returns a specific version', async () => {
-      (db.select as Mock).mockReturnValue(createChain([mockVersion]));
+      mockResolveKb();
+      (db.select as Mock).mockReturnValueOnce(createChain([mockVersion]));
 
       const res = await supertest(app)
-        .get(`/api/articles/${ART_ID}/versions/${VER_ID}`)
+        .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}/versions/${VER_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -89,18 +99,20 @@ describe('Version history routes', () => {
     });
 
     it('returns 404 when version not found', async () => {
-      (db.select as Mock).mockReturnValue(createChain([]));
+      mockResolveKb();
+      (db.select as Mock).mockReturnValueOnce(createChain([]));
 
       const res = await supertest(app)
-        .get(`/api/articles/${ART_ID}/versions/nonexistent`)
+        .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}/versions/nonexistent`)
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(404);
     });
   });
 
-  describe('POST /api/articles/:id/versions/:versionId/restore', () => {
+  describe('POST /api/knowledge-bases/:kbId/articles/:id/versions/:versionId/restore', () => {
     it('restores an old version', async () => {
+      mockResolveKb();
       const restored = { ...mockArticle, title: 'Old Title', content: mockVersion.content };
 
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
@@ -116,7 +128,7 @@ describe('Version history routes', () => {
       });
 
       const res = await supertest(app)
-        .post(`/api/articles/${ART_ID}/versions/${VER_ID}/restore`)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/versions/${VER_ID}/restore`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(200);
@@ -124,6 +136,7 @@ describe('Version history routes', () => {
     });
 
     it('restores when POST has no body and no Content-Type (fixed client fetch)', async () => {
+      mockResolveKb();
       const restored = { ...mockArticle, title: 'Old Title', content: mockVersion.content };
 
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
@@ -139,7 +152,7 @@ describe('Version history routes', () => {
       });
 
       const res = await supertest(app)
-        .post(`/api/articles/${ART_ID}/versions/${VER_ID}/restore`)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/versions/${VER_ID}/restore`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(200);
@@ -147,13 +160,15 @@ describe('Version history routes', () => {
     });
 
     it('returns 403 for viewer', async () => {
+      mockResolveKb();
       const res = await supertest(app)
-        .post(`/api/articles/${ART_ID}/versions/${VER_ID}/restore`)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/versions/${VER_ID}/restore`)
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
       expect(res.status).toBe(403);
     });
 
     it('returns 404 when version not found', async () => {
+      mockResolveKb();
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
         const tx = {
           select: vi.fn().mockReturnValue(createChain([])),
@@ -164,7 +179,7 @@ describe('Version history routes', () => {
       });
 
       const res = await supertest(app)
-        .post(`/api/articles/${ART_ID}/versions/nonexistent/restore`)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/versions/nonexistent/restore`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(404);

@@ -19,6 +19,16 @@ export const roleEnum = pgEnum('role', ['viewer', 'editor', 'admin']);
 export const providerEnum = pgEnum('oauth_provider', ['google', 'entra']);
 export const statusEnum = pgEnum('article_status', ['draft', 'published', 'archived']);
 
+// -- Knowledge Bases --
+
+export const knowledgeBases = pgTable('knowledge_bases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // -- Vector type for pgvector --
 
 const vector = customType<{ data: number[]; driverData: string }>({
@@ -50,11 +60,12 @@ export const categories = pgTable('categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   slug: text('slug').notNull(),
-  parentId: uuid('parent_id'),  // references categories.id — added below via relations
+  parentId: uuid('parent_id'),
+  knowledgeBaseId: uuid('knowledge_base_id').notNull().references(() => knowledgeBases.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex('categories_slug_parent_id_unique')
-    .on(t.slug, sql`COALESCE(${t.parentId}, '00000000-0000-0000-0000-000000000000')`),
+  uniqueIndex('categories_slug_parent_id_kb_unique')
+    .on(t.slug, sql`COALESCE(${t.parentId}, '00000000-0000-0000-0000-000000000000')`, t.knowledgeBaseId),
 ]);
 
 export const userCategoryRoles = pgTable(
@@ -65,6 +76,16 @@ export const userCategoryRoles = pgTable(
     role: roleEnum('role').notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.categoryId] })],
+);
+
+export const userKbRoles = pgTable(
+  'user_kb_roles',
+  {
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: uuid('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    role: roleEnum('role').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.knowledgeBaseId] })],
 );
 
 export const articles = pgTable('articles', {
@@ -95,9 +116,13 @@ export const articleVersions = pgTable('article_versions', {
 
 export const tags = pgTable('tags', {
   id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull().unique(),
-  slug: text('slug').notNull().unique(),
-});
+  name: text('name').notNull(),
+  slug: text('slug').notNull(),
+  knowledgeBaseId: uuid('knowledge_base_id').notNull().references(() => knowledgeBases.id),
+}, (t) => [
+  uniqueIndex('tags_slug_kb_unique').on(t.slug, t.knowledgeBaseId),
+  uniqueIndex('tags_name_kb_unique').on(t.name, t.knowledgeBaseId),
+]);
 
 export const articleTags = pgTable(
   'article_tags',
@@ -118,6 +143,15 @@ export const apiKeys = pgTable('api_keys', {
   revokedAt: timestamp('revoked_at'),
 });
 
+export const apiKeyKnowledgeBases = pgTable(
+  'api_key_knowledge_bases',
+  {
+    apiKeyId: uuid('api_key_id').notNull().references(() => apiKeys.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: uuid('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.apiKeyId, t.knowledgeBaseId] })],
+);
+
 export const importStatusEnum = pgEnum('import_status', ['pending', 'running', 'completed', 'failed']);
 
 export const attachments = pgTable('attachments', {
@@ -134,6 +168,7 @@ export const importJobs = pgTable('import_jobs', {
   id: uuid('id').primaryKey().defaultRandom(),
   status: importStatusEnum('status').notNull().default('pending'),
   createdBy: uuid('created_by').notNull().references(() => users.id),
+  knowledgeBaseId: uuid('knowledge_base_id').notNull().references(() => knowledgeBases.id),
   totalArticles: integer('total_articles').notNull().default(0),
   importedCount: integer('imported_count').notNull().default(0),
   errorLog: jsonb('error_log').notNull().default([]),
@@ -153,9 +188,28 @@ export const articleEmbeddings = pgTable('article_embeddings', {
 
 // -- Relations (for Drizzle's query builder) --
 
+export const knowledgeBasesRelations = relations(knowledgeBases, ({ many }) => ({
+  categories: many(categories),
+  tags: many(tags),
+  userKbRoles: many(userKbRoles),
+  apiKeyKnowledgeBases: many(apiKeyKnowledgeBases),
+  importJobs: many(importJobs),
+}));
+
+export const userKbRolesRelations = relations(userKbRoles, ({ one }) => ({
+  user: one(users, { fields: [userKbRoles.userId], references: [users.id] }),
+  knowledgeBase: one(knowledgeBases, { fields: [userKbRoles.knowledgeBaseId], references: [knowledgeBases.id] }),
+}));
+
+export const apiKeyKnowledgeBasesRelations = relations(apiKeyKnowledgeBases, ({ one }) => ({
+  apiKey: one(apiKeys, { fields: [apiKeyKnowledgeBases.apiKeyId], references: [apiKeys.id] }),
+  knowledgeBase: one(knowledgeBases, { fields: [apiKeyKnowledgeBases.knowledgeBaseId], references: [knowledgeBases.id] }),
+}));
+
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
   parent: one(categories, { fields: [categories.parentId], references: [categories.id], relationName: 'categoryParent' }),
   children: many(categories, { relationName: 'categoryParent' }),
+  knowledgeBase: one(knowledgeBases, { fields: [categories.knowledgeBaseId], references: [knowledgeBases.id] }),
   articles: many(articles),
   userRoles: many(userCategoryRoles),
 }));
@@ -178,6 +232,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   articleVersions: many(articleVersions),
   apiKeys: many(apiKeys),
   categoryRoles: many(userCategoryRoles),
+  kbRoles: many(userKbRoles),
   importJobs: many(importJobs),
 }));
 
@@ -191,7 +246,8 @@ export const articleTagsRelations = relations(articleTags, ({ one }) => ({
   tag: one(tags, { fields: [articleTags.tagId], references: [tags.id] }),
 }));
 
-export const tagsRelations = relations(tags, ({ many }) => ({
+export const tagsRelations = relations(tags, ({ one, many }) => ({
+  knowledgeBase: one(knowledgeBases, { fields: [tags.knowledgeBaseId], references: [knowledgeBases.id] }),
   articleTags: many(articleTags),
 }));
 
@@ -204,10 +260,12 @@ export const userCategoryRolesRelations = relations(userCategoryRoles, ({ one })
   category: one(categories, { fields: [userCategoryRoles.categoryId], references: [categories.id] }),
 }));
 
-export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+export const apiKeysRelations = relations(apiKeys, ({ one, many }) => ({
   createdByUser: one(users, { fields: [apiKeys.createdBy], references: [users.id] }),
+  knowledgeBases: many(apiKeyKnowledgeBases),
 }));
 
 export const importJobsRelations = relations(importJobs, ({ one }) => ({
   createdByUser: one(users, { fields: [importJobs.createdBy], references: [users.id] }),
+  knowledgeBase: one(knowledgeBases, { fields: [importJobs.knowledgeBaseId], references: [knowledgeBases.id] }),
 }));

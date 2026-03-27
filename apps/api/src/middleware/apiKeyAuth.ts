@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { eq } from 'drizzle-orm';
-import { db, apiKeys } from '@dovetail/db';
+import { db, apiKeys, apiKeyKnowledgeBases } from '@dovetail/db';
 
 export interface ApiKeyRequest extends Request {
   apiKeyId?: string;
+  allowedKbIds?: string[];
 }
 
 export async function apiKeyAuth(req: ApiKeyRequest, res: Response, next: NextFunction) {
@@ -32,5 +33,12 @@ export async function apiKeyAuth(req: ApiKeyRequest, res: Response, next: NextFu
   db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, key.id)).catch(() => {});
 
   req.apiKeyId = key.id;
+
+  // Fetch allowed KB IDs
+  const kbRows = await db.select({ knowledgeBaseId: apiKeyKnowledgeBases.knowledgeBaseId })
+    .from(apiKeyKnowledgeBases)
+    .where(eq(apiKeyKnowledgeBases.apiKeyId, key.id));
+  req.allowedKbIds = kbRows.map(r => r.knowledgeBaseId);
+
   next();
 }

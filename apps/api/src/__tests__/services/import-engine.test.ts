@@ -51,6 +51,7 @@ describe('ImportEngine', () => {
       userId: 'user-1',
       defaultStatus: 'draft',
       jobId: 'job-1',
+      knowledgeBaseId: 'kb-1',
     });
     expect(engine).toBeDefined();
   });
@@ -128,6 +129,7 @@ describe('ImportEngine', () => {
       userId: 'user-1',
       defaultStatus: 'draft',
       jobId: 'job-1',
+      knowledgeBaseId: 'kb-1',
     });
 
     const events: any[] = [];

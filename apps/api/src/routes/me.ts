@@ -9,10 +9,11 @@ export const meRouter: Router = Router();
 
 const effectiveRoleQuery = z.object({
   categoryId: z.string().uuid(),
+  knowledgeBaseId: z.string().uuid().optional(),
 });
 
 meRouter.get('/effective-role', authMiddleware, validateQuery(effectiveRoleQuery), async (req: AuthRequest, res) => {
-  const { categoryId } = res.locals.query as z.infer<typeof effectiveRoleQuery>;
-  const role = await resolveRole(req.user!.id, categoryId, req.user!.role as Role);
+  const { categoryId, knowledgeBaseId } = res.locals.query as z.infer<typeof effectiveRoleQuery>;
+  const role = await resolveRole(req.user!.id, categoryId, knowledgeBaseId, req.user!.role as Role);
   res.json({ role });
 });

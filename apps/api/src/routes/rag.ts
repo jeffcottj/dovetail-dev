@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { sql } from 'drizzle-orm';
-import { db } from '@dovetail/db';
+import { eq, sql } from 'drizzle-orm';
+import { db, categories, knowledgeBases } from '@dovetail/db';
 import { apiKeyAuth } from '../middleware/apiKeyAuth.js';
+import type { ApiKeyRequest } from '../middleware/apiKeyAuth.js';
 import { validateBody } from '../utils/validate.js';
 import { createEmbeddingProvider } from '../services/embeddings.js';
 import { buildCategoryPath } from '../utils/category-path.js';
@@ -12,18 +13,27 @@ export const ragRouter: Router = Router();
 const ragSearchSchema = z.object({
   query: z.string().min(1).max(5000),
   limit: z.number().int().min(1).max(50).default(5),
+  knowledgeBaseIds: z.array(z.string().uuid()).min(1),
   categoryIds: z.array(z.string().uuid()).optional(),
 });
 
-ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req, res) => {
-  const { query, limit, categoryIds } = req.body;
+ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req: ApiKeyRequest, res) => {
+  const { query, limit, knowledgeBaseIds, categoryIds } = req.body;
+
+  // Validate API key has access to requested KBs
+  const unauthorized = knowledgeBaseIds.filter((id: string) => !req.allowedKbIds?.includes(id));
+  if (unauthorized.length > 0) {
+    res.status(403).json({ error: 'API key does not have access to requested knowledge base(s)' });
+    return;
+  }
 
   // Embed the query
   const provider = createEmbeddingProvider();
   const queryEmbedding = await provider.embed(query);
   const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
-  // Build optional category filter
+  // Scope to KBs via categories
+  const kbFilter = sql`AND a.category_id IN (SELECT id FROM categories WHERE knowledge_base_id = ANY(${knowledgeBaseIds}::uuid[]))`;
   const categoryFilter = categoryIds?.length
     ? sql`AND a.category_id = ANY(${categoryIds}::uuid[])`
     : sql``;
@@ -34,7 +44,7 @@ ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req,
            a.title, a.slug, a.category_id
     FROM article_embeddings ae
     JOIN articles a ON a.id = ae.article_id
-    WHERE a.status = 'published' ${categoryFilter}
+    WHERE a.status = 'published' ${kbFilter} ${categoryFilter}
     ORDER BY ae.embedding <=> ${vectorLiteral}::vector
     LIMIT ${limit}
   `);
@@ -42,10 +52,16 @@ ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req,
   const formatted = await Promise.all(
     (results as any[]).map(async (r) => {
       const categoryPath = await buildCategoryPath(r.category_id);
+      // Get KB slug for URL
+      const [cat] = await db.select({ knowledgeBaseId: categories.knowledgeBaseId })
+        .from(categories).where(eq(categories.id, r.category_id));
+      const [kb] = cat ? await db.select({ slug: knowledgeBases.slug })
+        .from(knowledgeBases).where(eq(knowledgeBases.id, cat.knowledgeBaseId)) : [null];
+
       return {
         articleId: r.article_id,
         articleTitle: r.title,
-        articleUrl: `/articles/${categoryPath.join('/')}/${r.slug}`,
+        articleUrl: `/kb/${kb?.slug ?? 'default'}/articles/${categoryPath.join('/')}/${r.slug}`,
         categoryPath,
         chunkText: r.chunk_text,
         score: parseFloat(r.similarity),
