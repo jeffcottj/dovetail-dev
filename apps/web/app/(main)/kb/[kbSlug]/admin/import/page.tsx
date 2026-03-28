@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { apiFetch } from '../../../../../../lib/api';
 import { RoleGate } from '../../../../../../components/RoleGate';
-import ImportWizard from '../../../../admin/import/ImportWizard';
+import ImportWizard from '../../../../../../components/ImportWizard';
 import type { KnowledgeBase } from '@dovetail/types';
 
 async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {

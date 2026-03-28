@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { apiClientFetch } from '../../../../lib/api-client';
-import { useOptionalKb } from '../../../../lib/hooks/useKb';
-import { useToast } from '../../../../lib/hooks/useToast';
-import { Button } from '../../../../components/ui/Button';
+import { apiClientFetch } from '../lib/api-client';
+import { useOptionalKb } from '../lib/hooks/useKb';
+import { useToast } from '../lib/hooks/useToast';
+import { Button } from './ui/Button';
 import type { Tag } from '@dovetail/types';
 
 export function TagList({ initialTags }: { initialTags: Tag[] }) {

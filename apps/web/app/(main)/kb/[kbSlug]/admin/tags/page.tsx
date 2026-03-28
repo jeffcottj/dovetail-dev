@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { apiFetch } from '../../../../../../lib/api';
 import { RoleGate } from '../../../../../../components/RoleGate';
-import { TagList } from '../../../../admin/tags/TagList';
+import { TagList } from '../../../../../../components/TagList';
 import type { KnowledgeBase, Tag } from '@dovetail/types';
 
 async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {

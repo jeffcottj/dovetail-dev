@@ -13,26 +13,16 @@ interface UserData {
   role: string;
 }
 
-interface ArticleData {
-  status: string;
-}
-
 async function fetchStats() {
   const stats = {
     users: { total: 0, viewers: 0, editors: 0, admins: 0 },
-    articles: { total: 0, published: 0, draft: 0, archived: 0 },
-    categories: 0,
-    tags: 0,
+    knowledgeBases: 0,
   };
 
   try {
-    const [usersRes, publishedRes, draftRes, archivedRes, categories, tags] = await Promise.all([
+    const [usersRes, kbs] = await Promise.all([
       apiFetch<PaginatedResponse & { data: UserData[] }>('/api/admin/users?limit=100'),
-      apiFetch<PaginatedResponse & { data: ArticleData[] }>('/api/articles?status=published&limit=1'),
-      apiFetch<PaginatedResponse & { data: ArticleData[] }>('/api/articles?status=draft&limit=1'),
-      apiFetch<PaginatedResponse & { data: ArticleData[] }>('/api/articles?status=archived&limit=1'),
-      apiFetch<{ id: string }[]>('/api/categories'),
-      apiFetch<{ id: string }[]>('/api/tags'),
+      apiFetch<{ id: string }[]>('/api/knowledge-bases'),
     ]);
 
     stats.users.total = usersRes.total;
@@ -42,13 +32,7 @@ async function fetchStats() {
       else if (user.role === 'admin') stats.users.admins++;
     }
 
-    stats.articles.published = publishedRes.total;
-    stats.articles.draft = draftRes.total;
-    stats.articles.archived = archivedRes.total;
-    stats.articles.total = publishedRes.total + draftRes.total + archivedRes.total;
-
-    stats.categories = categories.length;
-    stats.tags = tags.length;
+    stats.knowledgeBases = kbs.length;
   } catch {
     // API unavailable — show zeros
   }
@@ -70,10 +54,10 @@ export default async function AdminPage() {
         Admin Dashboard
       </h1>
       <p className="text-ink-muted font-[family-name:var(--font-ui)] text-sm mb-8">
-        Manage users, roles, API keys, and tags.
+        Manage users, roles, API keys, and knowledge bases.
       </p>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 max-w-3xl">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8 max-w-3xl">
         <Card>
           <p className="text-2xl font-bold text-ink font-[family-name:var(--font-display)]">
             {stats.users.total}
@@ -86,28 +70,11 @@ export default async function AdminPage() {
 
         <Card>
           <p className="text-2xl font-bold text-ink font-[family-name:var(--font-display)]">
-            {stats.articles.total}
-          </p>
-          <p className="text-xs text-ink-muted font-[family-name:var(--font-ui)] mt-1">Articles</p>
-          <p className="text-xs text-ink-light font-[family-name:var(--font-ui)] mt-0.5">
-            {stats.articles.published} pub / {stats.articles.draft} draft
-          </p>
-        </Card>
-
-        <Card>
-          <p className="text-2xl font-bold text-ink font-[family-name:var(--font-display)]">
-            {stats.categories}
+            {stats.knowledgeBases}
           </p>
           <p className="text-xs text-ink-muted font-[family-name:var(--font-ui)] mt-1">
-            Categories
+            Knowledge Bases
           </p>
-        </Card>
-
-        <Card>
-          <p className="text-2xl font-bold text-ink font-[family-name:var(--font-display)]">
-            {stats.tags}
-          </p>
-          <p className="text-xs text-ink-muted font-[family-name:var(--font-ui)] mt-1">Tags</p>
         </Card>
       </div>
 
@@ -145,30 +112,6 @@ export default async function AdminPage() {
           </h2>
           <p className="text-ink-light text-sm">
             Create, view, and revoke API keys for RAG integrations.
-          </p>
-        </Link>
-
-        <Link
-          href="/admin/tags"
-          className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
-        >
-          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-2">
-            Tags
-          </h2>
-          <p className="text-ink-light text-sm">
-            Create and manage tags for organizing and discovering articles.
-          </p>
-        </Link>
-
-        <Link
-          href="/admin/import"
-          className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
-        >
-          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-2">
-            Import
-          </h2>
-          <p className="text-ink-light text-sm">
-            Import content from external knowledge bases.
           </p>
         </Link>
       </div>

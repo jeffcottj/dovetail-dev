@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { apiClientFetch } from '../../../../lib/api-client';
-import { FileDropzone } from '../../../../components/FileDropzone';
-import { CategoryTreePreview } from '../../../../components/CategoryTreePreview';
-import { Button } from '../../../../components/ui/Button';
-import { Card } from '../../../../components/ui/Card';
-import { useToast } from '../../../../lib/hooks/useToast';
+import { apiClientFetch } from '../lib/api-client';
+import { FileDropzone } from './FileDropzone';
+import { CategoryTreePreview } from './CategoryTreePreview';
+import { Button } from './ui/Button';
+import { Card } from './ui/Card';
+import { useToast } from '../lib/hooks/useToast';
 
 type Step = 'upload' | 'preview' | 'importing' | 'complete';
 

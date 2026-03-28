@@ -13,6 +13,7 @@ import { Button } from './ui/Button';
 import { CategoryModal } from './CategoryModal';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
+import { useOptionalKb } from '../lib/hooks/useKb';
 
 interface TreeItemProps {
   node: TreeNode;
@@ -35,14 +36,17 @@ function TreeItem({
 }: TreeItemProps) {
   const pathname = usePathname();
   const toast = useToast();
+  const kb = useOptionalKb();
   const [expanded, setExpanded] = useState(depth > 0);
   const hasChildren = node.children.length > 0;
   const categoryPath = [...slugPath, node.slug];
-  const href = kbSlug
-    ? `/kb/${kbSlug}/categories/${categoryPath.join('/')}`
+  const effectiveSlug = kbSlug ?? kb?.slug;
+  const href = effectiveSlug
+    ? `/kb/${effectiveSlug}/categories/${categoryPath.join('/')}`
     : `/categories/${categoryPath.join('/')}`;
   const isActive = pathname === href;
   const isAdmin = hasMinimumRole(userRole, 'admin');
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
 
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -53,7 +57,7 @@ function TreeItem({
     setDeleting(true);
     setDeleteError(null);
     try {
-      await apiClientFetch(`/api/categories/${node.id}`, {
+      await apiClientFetch(`${apiBase}/categories/${node.id}`, {
         method: 'DELETE',
       });
       setDeleteModalOpen(false);
