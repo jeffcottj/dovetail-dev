@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useCallback } from 'react';
 import { Search } from 'lucide-react';
+import { useOptionalKb } from '../lib/hooks/useKb';
 
 interface CategorySearchProps {
   categoryId: string;
@@ -11,17 +12,20 @@ interface CategorySearchProps {
 
 export function CategorySearch({ categoryId, categoryName }: CategorySearchProps) {
   const router = useRouter();
+  const kb = useOptionalKb();
   const [query, setQuery] = useState('');
+
+  const searchPath = kb ? `/kb/${kb.slug}/search` : '/search';
 
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       const trimmed = query.trim();
       if (trimmed) {
-        router.push(`/search?q=${encodeURIComponent(trimmed)}&categoryId=${categoryId}`);
+        router.push(`${searchPath}?q=${encodeURIComponent(trimmed)}&categoryId=${categoryId}`);
       }
     },
-    [query, router, categoryId],
+    [query, router, categoryId, searchPath],
   );
 
   return (
