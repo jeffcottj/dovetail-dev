@@ -31,7 +31,8 @@ interface ProgressEvent {
   errors?: number;
 }
 
-export default function ImportWizard() {
+export default function ImportWizard({ kbId }: { kbId?: string } = {}) {
+  const apiPrefix = kbId ? `/api/knowledge-bases/${kbId}` : '/api';
   const [step, setStep] = useState<Step>('upload');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -49,7 +50,7 @@ export default function ImportWizard() {
       formData.append('file', file);
 
       // Use raw fetch for multipart — apiClientFetch sets Content-Type: application/json
-      const res = await fetch('/api/admin/import/preview', {
+      const res = await fetch(`${apiPrefix}/admin/import/preview`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
@@ -74,7 +75,7 @@ export default function ImportWizard() {
     if (!preview) return;
     setLoading(true);
     try {
-      const res = await apiClientFetch<{ jobId: string }>('/api/admin/import/execute', {
+      const res = await apiClientFetch<{ jobId: string }>(`${apiPrefix}/admin/import/execute`, {
         method: 'POST',
         body: JSON.stringify({
           tempId: preview.tempId,
@@ -86,7 +87,7 @@ export default function ImportWizard() {
       setProgress({ imported: 0, total: preview.summary.articleCount, current: '' });
 
       // Connect SSE
-      const es = new EventSource(`/api/admin/import/${res.jobId}/progress`);
+      const es = new EventSource(`${apiPrefix}/admin/import/${res.jobId}/progress`);
       eventSourceRef.current = es;
 
       es.onmessage = (event) => {
@@ -117,7 +118,7 @@ export default function ImportWizard() {
     if (!jobId) return;
     setLoading(true);
     try {
-      const res = await apiClientFetch<{ published: number }>('/api/admin/articles/bulk-publish', {
+      const res = await apiClientFetch<{ published: number }>(`${apiPrefix}/admin/articles/bulk-publish`, {
         method: 'POST',
         body: JSON.stringify({ importJobId: jobId }),
       });
