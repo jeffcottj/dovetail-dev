@@ -11,11 +11,13 @@ import { CategoryModal } from './CategoryModal';
 interface SidebarCategoriesProps {
   categories: Category[];
   userRole: Role;
+  kbSlug?: string;
 }
 
 export function SidebarCategories({
   categories,
   userRole,
+  kbSlug,
 }: SidebarCategoriesProps) {
   const router = useRouter();
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -38,7 +40,7 @@ export function SidebarCategories({
           </button>
         )}
       </div>
-      <SidebarTree categories={categories} userRole={userRole} />
+      <SidebarTree categories={categories} userRole={userRole} kbSlug={kbSlug} />
 
       <CategoryModal
         open={createModalOpen}

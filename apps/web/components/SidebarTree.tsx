@@ -21,6 +21,7 @@ interface TreeItemProps {
   userRole: Role;
   categories: Category[];
   onMutationSuccess: () => void;
+  kbSlug?: string;
 }
 
 function TreeItem({
@@ -30,13 +31,17 @@ function TreeItem({
   userRole,
   categories,
   onMutationSuccess,
+  kbSlug,
 }: TreeItemProps) {
   const pathname = usePathname();
   const toast = useToast();
   const [expanded, setExpanded] = useState(depth > 0);
   const hasChildren = node.children.length > 0;
   const categoryPath = [...slugPath, node.slug];
-  const isActive = pathname === `/categories/${categoryPath.join('/')}`;
+  const href = kbSlug
+    ? `/kb/${kbSlug}/categories/${categoryPath.join('/')}`
+    : `/categories/${categoryPath.join('/')}`;
+  const isActive = pathname === href;
   const isAdmin = hasMinimumRole(userRole, 'admin');
 
   const [renameModalOpen, setRenameModalOpen] = useState(false);
@@ -92,7 +97,7 @@ function TreeItem({
         )}
         {!hasChildren && <span className="w-4 shrink-0" />}
         <Link
-          href={`/categories/${categoryPath.join('/')}`}
+          href={href}
           className="flex-1 truncate"
         >
           {node.name}
@@ -140,6 +145,7 @@ function TreeItem({
               userRole={userRole}
               categories={categories}
               onMutationSuccess={onMutationSuccess}
+              kbSlug={kbSlug}
             />
           ))}
         </ul>
@@ -201,9 +207,10 @@ function TreeItem({
 interface SidebarTreeProps {
   categories: Category[];
   userRole: Role;
+  kbSlug?: string;
 }
 
-export function SidebarTree({ categories, userRole }: SidebarTreeProps) {
+export function SidebarTree({ categories, userRole, kbSlug }: SidebarTreeProps) {
   const router = useRouter();
   const tree = buildTree(categories);
 
@@ -230,6 +237,7 @@ export function SidebarTree({ categories, userRole }: SidebarTreeProps) {
           userRole={userRole}
           categories={categories}
           onMutationSuccess={handleMutationSuccess}
+          kbSlug={kbSlug}
         />
       ))}
     </ul>
