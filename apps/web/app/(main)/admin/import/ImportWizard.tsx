@@ -31,7 +31,7 @@ interface ProgressEvent {
   errors?: number;
 }
 
-export default function ImportWizard({ kbId }: { kbId?: string } = {}) {
+export default function ImportWizard({ kbId }: { kbId?: string }) {
   const apiPrefix = kbId ? `/api/knowledge-bases/${kbId}` : '/api';
   const [step, setStep] = useState<Step>('upload');
   const [loading, setLoading] = useState(false);
