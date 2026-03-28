@@ -113,6 +113,18 @@ export default async function AdminPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-3xl">
         <Link
+          href="/admin/knowledge-bases"
+          className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
+        >
+          <h2 className="font-[family-name:var(--font-sub)] text-xl font-semibold text-ink mb-2">
+            Knowledge Bases
+          </h2>
+          <p className="text-ink-light text-sm">
+            Create, manage, and configure knowledge bases.
+          </p>
+        </Link>
+
+        <Link
           href="/admin/users"
           className="block p-6 bg-parchment-warm border border-border-light rounded-lg hover:border-accent transition-colors"
         >
