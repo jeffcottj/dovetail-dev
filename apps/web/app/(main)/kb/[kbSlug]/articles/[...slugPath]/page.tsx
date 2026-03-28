@@ -88,7 +88,7 @@ async function renderViewPage(kb: KnowledgeBase, kbSlug: string, slugPath: strin
 
   let articleTags: Tag[] = [];
   try {
-    articleTags = await apiFetch<Tag[]>(`/api/articles/${article.id}/tags`);
+    articleTags = await apiFetch<Tag[]>(`/api/knowledge-bases/${kb.id}/articles/${article.id}/tags`);
   } catch {
     // Tags unavailable
   }
@@ -211,7 +211,7 @@ async function renderHistoryPage(kb: KnowledgeBase, kbSlug: string, slugPath: st
   const fullPath = `/kb/${kbSlug}/articles/${slugPath.join('/')}`;
 
   const { data: versions } = await apiFetch<PaginatedResponse<ArticleVersion>>(
-    `/api/articles/${article.id}/versions?limit=50`,
+    `/api/knowledge-bases/${kb.id}/articles/${article.id}/versions?limit=50`,
   );
 
   const globalRole = session?.user?.role ?? 'viewer';
