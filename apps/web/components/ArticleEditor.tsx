@@ -10,6 +10,7 @@ import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table
 import { EditorToolbar } from './EditorToolbar';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
+import { useOptionalKb } from '../lib/hooks/useKb';
 import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
 import { articleUrl } from '../lib/article-url';
@@ -18,6 +19,8 @@ import type { Article } from '@dovetail/types';
 export function ArticleEditor({ article }: { article: Article }) {
   const router = useRouter();
   const toast = useToast();
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
   const [title, setTitle] = useState(article.title);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -37,7 +40,7 @@ export function ArticleEditor({ article }: { article: Article }) {
     if (!editor) return;
     setSaving(true);
     try {
-      await apiClientFetch(`/api/articles/${article.id}`, {
+      await apiClientFetch(`${apiBase}/articles/${article.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           title,
@@ -50,14 +53,14 @@ export function ArticleEditor({ article }: { article: Article }) {
     } finally {
       setSaving(false);
     }
-  }, [editor, article.id, title, toast]);
+  }, [editor, article.id, title, toast, apiBase]);
 
   const handlePublish = useCallback(async () => {
     if (!editor) return;
     setPublishing(true);
     try {
       // Save first
-      await apiClientFetch(`/api/articles/${article.id}`, {
+      await apiClientFetch(`${apiBase}/articles/${article.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           title,
@@ -65,7 +68,7 @@ export function ArticleEditor({ article }: { article: Article }) {
         }),
       });
       // Then publish
-      await apiClientFetch(`/api/articles/${article.id}/publish`, {
+      await apiClientFetch(`${apiBase}/articles/${article.id}/publish`, {
         method: 'POST',
       });
       toast.success('Article published');
@@ -77,7 +80,7 @@ export function ArticleEditor({ article }: { article: Article }) {
     } finally {
       setPublishing(false);
     }
-  }, [editor, article.id, article.slug, title, router, toast]);
+  }, [editor, article.id, article.slug, title, router, toast, apiBase]);
 
   return (
     <div>

@@ -10,3 +10,8 @@ export function useKb(): KnowledgeBase {
   if (!kb) throw new Error('useKb must be used within a KbProvider');
   return kb;
 }
+
+/** Non-throwing variant — returns null when outside KbProvider */
+export function useOptionalKb(): KnowledgeBase | null {
+  return useContext(KbContext);
+}

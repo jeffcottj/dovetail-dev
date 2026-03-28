@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { apiClientFetch } from '../lib/api-client';
+import { useOptionalKb } from '../lib/hooks/useKb';
 import { buildTree, flattenTree, type FlatOption } from '../lib/categories';
 import { Button } from './ui/Button';
 import type { Category, Tag } from '@dovetail/types';
@@ -35,6 +36,9 @@ function daysAgo(days: number): string {
 export function SearchFilters() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
+  const searchPath = kb ? `/kb/${kb.slug}/search` : '/search';
 
   const [expanded, setExpanded] = useState(() => {
     // Auto-expand if any filter is active
@@ -67,17 +71,17 @@ export function SearchFilters() {
 
   // Fetch categories and tags on mount
   useEffect(() => {
-    apiClientFetch<Category[]>('/api/categories')
+    apiClientFetch<Category[]>(`${apiBase}/categories`)
       .then((cats) => {
         const tree = buildTree(cats);
         setCategories(flattenTree(tree));
       })
       .catch(() => {});
 
-    apiClientFetch<Tag[]>('/api/tags')
+    apiClientFetch<Tag[]>(`${apiBase}/tags`)
       .then(setTags)
       .catch(() => {});
-  }, []);
+  }, [apiBase]);
 
   const updateParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -91,15 +95,15 @@ export function SearchFilters() {
       }
       // Reset to page 1 when filters change
       params.delete('page');
-      router.push(`/search?${params.toString()}`);
+      router.push(`${searchPath}?${params.toString()}`);
     },
-    [router, searchParams],
+    [router, searchParams, searchPath],
   );
 
   const clearFilters = useCallback(() => {
     const q = searchParams.get('q') || '';
-    router.push(q ? `/search?q=${encodeURIComponent(q)}` : '/search');
-  }, [router, searchParams]);
+    router.push(q ? `${searchPath}?q=${encodeURIComponent(q)}` : searchPath);
+  }, [router, searchParams, searchPath]);
 
   const toggleTag = useCallback(
     (tagId: string) => {

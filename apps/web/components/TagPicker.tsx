@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { apiClientFetch } from '../lib/api-client';
+import { useOptionalKb } from '../lib/hooks/useKb';
 import type { Tag } from '@dovetail/types';
 
 interface TagPickerProps {
@@ -11,6 +12,8 @@ interface TagPickerProps {
 }
 
 export function TagPicker({ articleId, initialTags = [], onTagsChange }: TagPickerProps) {
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
   const [assignedTags, setAssignedTags] = useState<Tag[]>(initialTags);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [input, setInput] = useState('');
@@ -18,21 +21,21 @@ export function TagPicker({ articleId, initialTags = [], onTagsChange }: TagPick
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    apiClientFetch<Tag[]>('/api/tags')
+    apiClientFetch<Tag[]>(`${apiBase}/tags`)
       .then(setAllTags)
       .catch(() => {});
-  }, []);
+  }, [apiBase]);
 
   useEffect(() => {
     if (articleId) {
-      apiClientFetch<Tag[]>(`/api/articles/${articleId}/tags`)
+      apiClientFetch<Tag[]>(`${apiBase}/articles/${articleId}/tags`)
         .then((tags) => {
           setAssignedTags(tags);
           onTagsChange?.(tags);
         })
         .catch(() => {});
     }
-  }, [articleId]);
+  }, [articleId, apiBase]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -57,7 +60,7 @@ export function TagPicker({ articleId, initialTags = [], onTagsChange }: TagPick
 
     if (articleId) {
       try {
-        await apiClientFetch(`/api/articles/${articleId}/tags`, {
+        await apiClientFetch(`${apiBase}/articles/${articleId}/tags`, {
           method: 'POST',
           body: JSON.stringify({ tagIds: [tag.id] }),
         });
@@ -74,7 +77,7 @@ export function TagPicker({ articleId, initialTags = [], onTagsChange }: TagPick
 
     if (articleId) {
       try {
-        await apiClientFetch(`/api/articles/${articleId}/tags/${tag.id}`, {
+        await apiClientFetch(`${apiBase}/articles/${articleId}/tags/${tag.id}`, {
           method: 'DELETE',
         });
       } catch {
