@@ -2,24 +2,18 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { FilePlus } from 'lucide-react';
 import { apiFetch } from '../../../../../../lib/api';
+import { getKbBySlug } from '../../../../../../lib/kb';
 import { articleUrl } from '../../../../../../lib/article-url';
 import { RoleGate } from '../../../../../../components/RoleGate';
 import { Button } from '../../../../../../components/ui/Button';
 import { CategorySearch } from '../../../../../../components/CategorySearch';
-import type { Category, Article, KnowledgeBase } from '@dovetail/types';
+import type { Category, Article } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
   data: T[];
   total: number;
   page: number;
   limit: number;
-}
-
-async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {
-  try {
-    const kbs = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-    return kbs.find(kb => kb.slug === slug) ?? null;
-  } catch { return null; }
 }
 
 function StatusBadge({ status }: { status: string }) {

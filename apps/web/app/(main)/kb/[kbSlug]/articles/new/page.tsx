@@ -1,15 +1,9 @@
 import { notFound, redirect } from 'next/navigation';
 import { apiFetch } from '../../../../../../lib/api';
+import { getKbBySlug } from '../../../../../../lib/kb';
 import { auth } from '../../../../../../auth';
 import { ArticleCreateForm } from '../../../../../../components/ArticleCreateForm';
-import type { Category, KnowledgeBase } from '@dovetail/types';
-
-async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {
-  try {
-    const kbs = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-    return kbs.find(kb => kb.slug === slug) ?? null;
-  } catch { return null; }
-}
+import type { Category } from '@dovetail/types';
 
 export default async function KbNewArticlePage({
   params,

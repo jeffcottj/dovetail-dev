@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { apiFetch } from '../../../../../../lib/api';
+import { getKbBySlug } from '../../../../../../lib/kb';
 import { auth } from '../../../../../../auth';
 import { ArticleContent } from '../../../../../../components/ArticleContent';
 import { ArticleActions } from '../../../../../../components/ArticleActions';
@@ -15,13 +16,6 @@ interface PaginatedResponse<T> {
   total: number;
   page: number;
   limit: number;
-}
-
-async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {
-  try {
-    const kbs = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-    return kbs.find(kb => kb.slug === slug) ?? null;
-  } catch { return null; }
 }
 
 export default async function KbArticleCatchAllPage({
@@ -67,7 +61,7 @@ async function renderViewPage(kb: KnowledgeBase, kbSlug: string, slugPath: strin
   if (!canEdit && session?.user && article.categoryId) {
     try {
       const { role: effectiveRole } = await apiFetch<{ role: string }>(
-        `/api/me/effective-role?categoryId=${article.categoryId}`,
+        `/api/me/effective-role?categoryId=${article.categoryId}&knowledgeBaseId=${kb.id}`,
       );
       canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
     } catch {
@@ -170,7 +164,7 @@ async function renderEditPage(kb: KnowledgeBase, kbSlug: string, slugPath: strin
   if (!canEdit && session?.user && article.categoryId) {
     try {
       const { role: effectiveRole } = await apiFetch<{ role: string }>(
-        `/api/me/effective-role?categoryId=${article.categoryId}`,
+        `/api/me/effective-role?categoryId=${article.categoryId}&knowledgeBaseId=${kb.id}`,
       );
       canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
     } catch {
@@ -221,7 +215,7 @@ async function renderHistoryPage(kb: KnowledgeBase, kbSlug: string, slugPath: st
   if (!canRestore && session?.user && article.categoryId) {
     try {
       const { role: effectiveRole } = await apiFetch<{ role: string }>(
-        `/api/me/effective-role?categoryId=${article.categoryId}`,
+        `/api/me/effective-role?categoryId=${article.categoryId}&knowledgeBaseId=${kb.id}`,
       );
       canRestore = effectiveRole === 'editor' || effectiveRole === 'admin';
     } catch {

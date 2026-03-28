@@ -1,15 +1,9 @@
 import { notFound } from 'next/navigation';
 import { apiFetch } from '../../../../../../lib/api';
+import { getKbBySlug } from '../../../../../../lib/kb';
 import { RoleGate } from '../../../../../../components/RoleGate';
 import { TagList } from '../../../../../../components/TagList';
-import type { KnowledgeBase, Tag } from '@dovetail/types';
-
-async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {
-  try {
-    const kbs = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-    return kbs.find(kb => kb.slug === slug) ?? null;
-  } catch { return null; }
-}
+import type { Tag } from '@dovetail/types';
 
 export default async function KbTagsPage({ params }: { params: Promise<{ kbSlug: string }> }) {
   const { kbSlug } = await params;

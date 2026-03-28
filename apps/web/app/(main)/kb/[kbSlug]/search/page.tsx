@@ -2,10 +2,11 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { apiFetch } from '../../../../../lib/api';
+import { getKbBySlug } from '../../../../../lib/kb';
 import { SearchFilters } from '../../../../../components/SearchFilters';
 import { Badge } from '../../../../../components/ui/Badge';
 import { articleUrl } from '../../../../../lib/article-url';
-import type { Category, KnowledgeBase } from '@dovetail/types';
+import type { Category } from '@dovetail/types';
 
 interface SearchResult {
   id: string;
@@ -34,13 +35,6 @@ const MODE_DISPLAY: Record<string, string> = {
   semantic: 'AI-powered',
   hybrid: 'hybrid',
 };
-
-async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {
-  try {
-    const kbs = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-    return kbs.find(kb => kb.slug === slug) ?? null;
-  } catch { return null; }
-}
 
 export default async function KbSearchPage({
   params,

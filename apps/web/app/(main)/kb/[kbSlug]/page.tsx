@@ -2,21 +2,15 @@ import Link from 'next/link';
 import { FilePlus, Search, Clock, FileEdit } from 'lucide-react';
 import { auth } from '../../../../auth';
 import { apiFetch } from '../../../../lib/api';
+import { getKbBySlug } from '../../../../lib/kb';
 import { hasMinimumRole } from '../../../../lib/roles';
 import { articleUrl } from '../../../../lib/article-url';
 import { Button } from '../../../../components/ui/Button';
 import { Card } from '../../../../components/ui/Card';
 import { Badge } from '../../../../components/ui/Badge';
-import type { Article, KnowledgeBase, Role } from '@dovetail/types';
+import type { Article, Role } from '@dovetail/types';
 
 interface PaginatedResponse<T> { data: T[]; total: number; page: number; limit: number; }
-
-async function getKbBySlug(slug: string): Promise<KnowledgeBase | null> {
-  try {
-    const kbs = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-    return kbs.find(kb => kb.slug === slug) ?? null;
-  } catch { return null; }
-}
 
 export default async function KbHomePage({ params }: { params: Promise<{ kbSlug: string }> }) {
   const { kbSlug } = await params;
