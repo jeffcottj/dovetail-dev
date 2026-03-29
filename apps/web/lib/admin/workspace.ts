@@ -20,41 +20,35 @@ export interface GlobalAdminOverviewMetrics {
   };
 }
 
-export interface GlobalAdminOverview {
+export interface GlobalAdminOverviewData {
   metrics: GlobalAdminOverviewMetrics;
   activity: AdminActivityItem[];
 }
 
-const emptyOverview: GlobalAdminOverview = {
-  metrics: {
-    users: {
-      total: 0,
-      byRole: {
-        admin: 0,
-        editor: 0,
-        viewer: 0,
-      },
-    },
-    knowledgeBases: {
-      total: 0,
-    },
-    apiKeys: {
-      active: 0,
-      revoked: 0,
-    },
-  },
-  activity: [],
-};
+export interface GlobalAdminOverviewSuccess extends GlobalAdminOverviewData {
+  ok: true;
+}
+
+export interface GlobalAdminOverviewFailure {
+  ok: false;
+  error: string;
+}
+
+export type GlobalAdminOverview = GlobalAdminOverviewSuccess | GlobalAdminOverviewFailure;
 
 export async function fetchGlobalAdminOverview(): Promise<GlobalAdminOverview> {
   try {
-    return await apiFetch<GlobalAdminOverview>('/api/admin/overview');
-  } catch {
-    return emptyOverview;
+    const overview = await apiFetch<GlobalAdminOverviewData>('/api/admin/overview');
+    return { ok: true, ...overview };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Failed to load admin overview',
+    };
   }
 }
 
-export function buildGlobalAdminMetrics(overview: GlobalAdminOverview): AdminMetricItem[] {
+export function buildGlobalAdminMetrics(overview: GlobalAdminOverviewSuccess): AdminMetricItem[] {
   const { users, knowledgeBases, apiKeys } = overview.metrics;
 
   return [
@@ -81,7 +75,12 @@ export function buildGlobalAdminMetrics(overview: GlobalAdminOverview): AdminMet
   ];
 }
 
-export function buildGlobalAdminSummary(overview: GlobalAdminOverview): string {
+export function buildGlobalAdminSummary(overview: GlobalAdminOverviewSuccess): string {
   const { users, knowledgeBases, apiKeys } = overview.metrics;
   return `The workspace currently covers ${users.total} users, ${knowledgeBases.total} knowledge bases, and ${apiKeys.active} active API keys. Role mix: ${users.byRole.admin} admins, ${users.byRole.editor} editors, and ${users.byRole.viewer} viewers.`;
+}
+
+export function getGlobalAdminOverviewWarning(overview: GlobalAdminOverview): string | null {
+  if (overview.ok) return null;
+  return `Admin overview is temporarily unavailable. ${overview.error}`;
 }

@@ -3,7 +3,11 @@ import { redirect } from 'next/navigation';
 import { AdminWorkspaceLayout } from '../../../../components/admin/AdminWorkspaceLayout';
 import { Card } from '../../../../components/ui/Card';
 import { buildGlobalAdminActions, getAdminNavSections } from '../../../../lib/admin/nav';
-import { buildGlobalAdminMetrics, fetchGlobalAdminOverview } from '../../../../lib/admin/workspace';
+import {
+  buildGlobalAdminMetrics,
+  fetchGlobalAdminOverview,
+  getGlobalAdminOverviewWarning,
+} from '../../../../lib/admin/workspace';
 import { apiFetch } from '../../../../lib/api';
 import { UserList } from '../../../(main)/admin/users/UserList';
 
@@ -29,6 +33,7 @@ export default async function AdminUsersPage() {
   }
 
   const overview = await fetchGlobalAdminOverview();
+  const overviewWarning = getGlobalAdminOverviewWarning(overview);
 
   let users: PaginatedUsers = { data: [], total: 0, page: 1, limit: 20 };
   let error: string | null = null;
@@ -46,9 +51,9 @@ export default async function AdminUsersPage() {
         description: 'View all users, change global roles, and assign category-level permissions.',
         scopeLabel: 'Global Admin',
       }}
-      metrics={buildGlobalAdminMetrics(overview)}
+      metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
       actions={buildGlobalAdminActions()}
-      activity={overview.activity}
+      activity={overview.ok ? overview.activity : []}
     >
       <section className="space-y-4">
         <Card className="!bg-[color:var(--color-admin-panel)]">
@@ -60,6 +65,14 @@ export default async function AdminUsersPage() {
             category-level overrides.
           </p>
         </Card>
+        {overviewWarning ? (
+          <Card className="border-warning/40 bg-warning/10">
+            <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-warning">
+              Overview unavailable
+            </p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
+          </Card>
+        ) : null}
         {error ? (
           <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger font-[family-name:var(--font-ui)]">
             {error}

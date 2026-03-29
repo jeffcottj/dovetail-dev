@@ -7,6 +7,7 @@ import {
   buildGlobalAdminMetrics,
   buildGlobalAdminSummary,
   fetchGlobalAdminOverview,
+  getGlobalAdminOverviewWarning,
 } from '../../../lib/admin/workspace';
 
 export default async function AdminPage() {
@@ -16,6 +17,7 @@ export default async function AdminPage() {
   }
 
   const overview = await fetchGlobalAdminOverview();
+  const overviewWarning = getGlobalAdminOverviewWarning(overview);
 
   return (
     <AdminWorkspaceLayout
@@ -25,22 +27,31 @@ export default async function AdminPage() {
         description: 'Monitor users, knowledge bases, API keys, and recent activity from one place.',
         scopeLabel: 'Global Admin',
       }}
-      metrics={buildGlobalAdminMetrics(overview)}
+      metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
       actions={buildGlobalAdminActions()}
-      activity={overview.activity}
+      activity={overview.ok ? overview.activity : []}
     >
-      <Card className="!bg-[color:var(--color-admin-panel)]">
-        <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-ink-muted">
-          Workspace Summary
-        </p>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">
-          {buildGlobalAdminSummary(overview)}
-        </p>
-        <p className="mt-4 max-w-3xl text-sm leading-6 text-ink-light">
-          Use the quick actions above to create a knowledge base, manage users, or issue an API
-          key. The activity feed reflects the latest global changes.
-        </p>
-      </Card>
+      {overview.ok ? (
+        <Card className="!bg-[color:var(--color-admin-panel)]">
+          <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-ink-muted">
+            Workspace Summary
+          </p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">
+            {buildGlobalAdminSummary(overview)}
+          </p>
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-ink-light">
+            Use the quick actions above to create a knowledge base, manage users, or issue an API
+            key. The activity feed reflects the latest global changes.
+          </p>
+        </Card>
+      ) : (
+        <Card className="border-warning/40 bg-warning/10">
+          <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-warning">
+            Overview unavailable
+          </p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
+        </Card>
+      )}
     </AdminWorkspaceLayout>
   );
 }

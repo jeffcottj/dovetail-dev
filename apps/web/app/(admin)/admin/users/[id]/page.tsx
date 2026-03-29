@@ -5,7 +5,11 @@ import { AdminWorkspaceLayout } from '../../../../../components/admin/AdminWorks
 import { Card } from '../../../../../components/ui/Card';
 import { Badge } from '../../../../../components/ui/Badge';
 import { buildGlobalAdminActions, getAdminNavSections } from '../../../../../lib/admin/nav';
-import { buildGlobalAdminMetrics, fetchGlobalAdminOverview } from '../../../../../lib/admin/workspace';
+import {
+  buildGlobalAdminMetrics,
+  fetchGlobalAdminOverview,
+  getGlobalAdminOverviewWarning,
+} from '../../../../../lib/admin/workspace';
 import { apiFetch } from '../../../../../lib/api';
 import { CategoryRoleManager } from '../../../../(main)/admin/users/[id]/CategoryRoleManager';
 import type { UserCategoryRole } from '@dovetail/types';
@@ -34,6 +38,7 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
   }
 
   const overview = await fetchGlobalAdminOverview();
+  const overviewWarning = getGlobalAdminOverviewWarning(overview);
   const { id } = await params;
 
   let user: UserData | null = null;
@@ -69,14 +74,23 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
         description: 'Review global access and category-level overrides for this user.',
         scopeLabel: 'Global Admin',
       }}
-      metrics={buildGlobalAdminMetrics(overview)}
+      metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
       actions={buildGlobalAdminActions()}
-      activity={overview.activity}
+      activity={overview.ok ? overview.activity : []}
     >
       <section className="space-y-6">
         <Link href="/admin/users" className="text-sm text-accent hover:underline font-[family-name:var(--font-ui)]">
           &larr; Back to Users
         </Link>
+
+        {overviewWarning ? (
+          <Card className="border-warning/40 bg-warning/10">
+            <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-warning">
+              Overview unavailable
+            </p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
+          </Card>
+        ) : null}
 
         <Card className="!bg-[color:var(--color-admin-panel)]">
           <div className="flex items-start gap-4">
