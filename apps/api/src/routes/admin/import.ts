@@ -233,9 +233,16 @@ importRouter.get(
       Connection: 'keep-alive',
     });
 
+    let didComplete = false;
+
     const listener = (event: ProgressEvent) => {
+      if (didComplete || res.writableEnded) {
+        return;
+      }
+
       res.write(`data: ${JSON.stringify(event)}\n\n`);
       if (event.type === 'complete') {
+        didComplete = true;
         res.end();
       }
     };
@@ -257,6 +264,11 @@ importRouter.get(
         jobListeners.delete(jobId);
       }
 
+      if (didComplete || res.writableEnded) {
+        return;
+      }
+
+      didComplete = true;
       res.write(`data: ${JSON.stringify({
         type: 'complete',
         imported: currentJob.importedCount,
@@ -311,4 +323,4 @@ importRouter.get(
   },
 );
 
-export { tempSessions };
+export { tempSessions, jobListeners };
