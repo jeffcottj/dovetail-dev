@@ -12,11 +12,39 @@ import { getKbBySlug } from '../../../../../../lib/kb';
 import type { User } from '@dovetail/types';
 import { KbUserManager } from '../../../../../(main)/kb/[kbSlug]/admin/users/KbUserManager';
 
+const ADMIN_USER_PAGE_SIZE = 100;
+
 interface PaginatedResponse<T> {
   data: T[];
   total: number;
   page: number;
   limit: number;
+}
+
+async function fetchAllAdminUsers() {
+  const firstPage = await fetchAdminResource<PaginatedResponse<User>>(
+    `/api/admin/users?limit=${ADMIN_USER_PAGE_SIZE}`
+  );
+  if (!firstPage.ok) return firstPage;
+
+  const users = [...firstPage.data.data];
+  const totalPages = Math.ceil(firstPage.data.total / firstPage.data.limit);
+
+  for (let page = 2; page <= totalPages; page += 1) {
+    const nextPage = await fetchAdminResource<PaginatedResponse<User>>(
+      `/api/admin/users?limit=${ADMIN_USER_PAGE_SIZE}&page=${page}`
+    );
+    if (!nextPage.ok) return nextPage;
+    users.push(...nextPage.data.data);
+  }
+
+  return {
+    ok: true as const,
+    data: {
+      ...firstPage.data,
+      data: users,
+    },
+  };
 }
 
 export default async function KbUsersPage({ params }: { params: Promise<{ kbSlug: string }> }) {
@@ -27,7 +55,7 @@ export default async function KbUsersPage({ params }: { params: Promise<{ kbSlug
   const overview = await fetchKbAdminOverview(kb.id);
   const overviewWarning = getKbAdminOverviewWarning(overview);
   const kbContext = overview.ok ? overview.kb : kb;
-  const usersResult = await fetchAdminResource<PaginatedResponse<User>>('/api/admin/users?limit=100');
+  const usersResult = await fetchAllAdminUsers();
 
   return (
     <AdminWorkspaceLayout

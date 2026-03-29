@@ -33,6 +33,9 @@ function collectElements(node: ReactNode, elements: ReactElement<any>[] = []) {
 
   const element = node as ReactElement<any>;
   elements.push(element);
+  if (typeof element.type === 'function') {
+    collectElements(element.type(element.props), elements);
+  }
   collectElements(element.props?.children, elements);
   return elements;
 }
@@ -99,8 +102,12 @@ describe('Admin nav shell', () => {
 
     const nav = AdminNav({ sections });
     const navElements = collectElements(nav);
+    const activeLinks = navElements.filter(
+      (node) => node.type === 'a' && node.props.href === '/admin/users' && node.props['aria-current'] === 'page',
+    );
     const desktopRail = navElements.find((node) => node.type === 'aside');
 
+    expect(activeLinks).toHaveLength(2);
     expect(desktopRail?.props.className).toContain('w-full');
     expect(desktopRail?.props.className).toContain('lg:w-72');
 
