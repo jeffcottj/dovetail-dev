@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db, articles, articleVersions, categories } from '@dovetail/db';
+import { adminActivityEvents, db, articles, articleVersions, categories } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { buildAdminActivityInsert } from '../services/admin-activity.js';
 import { validateBody, validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 import { toSlug } from '../utils/slug.js';
@@ -142,6 +143,14 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
       plainText,
       status: 'draft',
     }).returning();
+    await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'article.created',
+      actorId: req.user!.id,
+      knowledgeBaseId: req.params.kbId as string | undefined,
+      subjectId: created.id,
+      subjectLabel: created.title,
+      metadata: { articleId: created.id },
+    }));
     void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
     const categoryPath = await buildCategoryPath(created.categoryId);
     res.status(201).json({ ...created, categoryPath });
@@ -157,6 +166,14 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
         plainText,
         status: 'draft',
       }).returning();
+      await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+        kind: 'article.created',
+        actorId: req.user!.id,
+        knowledgeBaseId: req.params.kbId as string | undefined,
+        subjectId: created.id,
+        subjectLabel: created.title,
+        metadata: { articleId: created.id },
+      }));
       void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
       const categoryPath = await buildCategoryPath(created.categoryId);
       res.status(201).json({ ...created, categoryPath });
@@ -233,6 +250,15 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
       }
     }
     result = updated;
+
+    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'article.edited',
+      actorId: req.user!.id,
+      knowledgeBaseId: cat?.knowledgeBaseId,
+      subjectId: updated.id,
+      subjectLabel: updated.title,
+      metadata: { articleId: updated.id },
+    }));
   });
 
   if (!res.headersSent) {

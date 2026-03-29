@@ -24,8 +24,9 @@ vi.mock('../../utils/category-path.js', () => ({
 }));
 
 import { app } from '../../app.js';
-import { db } from '@dovetail/db';
+import { adminActivityEvents, db } from '@dovetail/db';
 import { resolveCategoryPath, buildCategoryPath } from '../../utils/category-path.js';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 
 const CAT_ID = '00000000-0000-4000-8000-000000000001';
 const ART_ID = '00000000-0000-4000-8000-000000000010';
@@ -137,7 +138,9 @@ describe('Article routes', () => {
 
     it('creates a draft article for editor', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.insert as Mock).mockReturnValue(createChain([mockArticle]));
+      (db.insert as Mock).mockReturnValueOnce(createChain([mockArticle]));
+      const activityInsert = createChain([{ id: 'evt-article-create' }]);
+      (db.insert as Mock).mockReturnValueOnce(activityInsert);
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/articles')
@@ -146,6 +149,15 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.title).toBe('Test Article');
+      expect((db.insert as Mock).mock.calls[1]?.[0]).toBe(adminActivityEvents);
+      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'article.created',
+        actorId: USER_ID,
+        knowledgeBaseId: 'kb-1',
+        subjectId: ART_ID,
+        subjectLabel: 'Test Article',
+        metadata: { articleId: ART_ID },
+      }));
     });
 
     it('includes categoryPath in the response', async () => {
@@ -177,16 +189,21 @@ describe('Article routes', () => {
   describe('PATCH /api/knowledge-bases/kb-1/articles/:id', () => {
     it('updates article and creates version', async () => {
       const updated = { ...mockArticle, title: 'Updated Title' };
+      let activityInsert: ReturnType<typeof createChain>;
 
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
 
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const versionInsert = createChain([]);
+        activityInsert = createChain([{ id: 'evt-article-edit' }]);
         const tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockArticle]))  // fetch current article
             .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))  // get category KB
             .mockReturnValueOnce(createChain([{ max: 0 }])),   // max version
-          insert: vi.fn().mockReturnValue(createChain([])),     // insert version
+          insert: vi.fn()
+            .mockReturnValueOnce(versionInsert)
+            .mockReturnValueOnce(activityInsert), // insert version, then activity event
           update: vi.fn().mockReturnValue(createChain([updated])), // update article
         };
         return fn(tx);
@@ -202,6 +219,14 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.title).toBe('Updated Title');
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'article.edited',
+        actorId: USER_ID,
+        knowledgeBaseId: 'kb-1',
+        subjectId: ART_ID,
+        subjectLabel: 'Updated Title',
+        metadata: { articleId: ART_ID },
+      }));
     });
 
     it('returns 404 when article not found', async () => {

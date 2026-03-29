@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, sql } from 'drizzle-orm';
-import { db, users, userCategoryRoles, categories } from '@dovetail/db';
+import { adminActivityEvents, db, users, userCategoryRoles, categories } from '@dovetail/db';
 import { authMiddleware } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 import { validateBody, validateQuery } from '../../utils/validate.js';
 import { paginationSchema, paginate } from '../../utils/pagination.js';
 
@@ -60,6 +61,14 @@ adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBod
     res.status(404).json({ error: 'User not found' });
     return;
   }
+
+  await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+    kind: 'user.role_changed',
+    actorId: req.user!.id,
+    subjectId: updated.id,
+    subjectLabel: updated.name,
+    metadata: { role: updated.role },
+  }));
 
   res.json(updated);
 });

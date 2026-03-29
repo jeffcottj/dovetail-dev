@@ -19,7 +19,8 @@ vi.mock('@dovetail/db', async (importOriginal) => {
 });
 
 import { app } from '../../../app.js';
-import { db } from '@dovetail/db';
+import { adminActivityEvents, db } from '@dovetail/db';
+import { buildAdminActivityInsert } from '../../../services/admin-activity.js';
 
 describe('Admin user routes', () => {
   let adminToken: string;
@@ -71,6 +72,8 @@ describe('Admin user routes', () => {
     it('updates user role', async () => {
       const updated = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'editor', provider: 'google', createdAt: new Date() };
       (db.update as Mock).mockReturnValue(createChain([updated]));
+      const activityInsert = createChain([{ id: 'evt-1' }]);
+      (db.insert as Mock).mockReturnValueOnce(activityInsert);
 
       const res = await supertest(app)
         .patch('/api/admin/users/u1')
@@ -79,6 +82,14 @@ describe('Admin user routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.role).toBe('editor');
+      expect(db.insert).toHaveBeenCalledWith(adminActivityEvents);
+      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'user.role_changed',
+        actorId: 'admin-1',
+        subjectId: updated.id,
+        subjectLabel: updated.name,
+        metadata: { role: updated.role },
+      }));
     });
 
     it('returns 404 when user not found', async () => {

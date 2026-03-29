@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';
-import { db, knowledgeBases, categories, userKbRoles } from '@dovetail/db';
-import { authMiddleware } from '../middleware/auth.js';
+import { adminActivityEvents, db, knowledgeBases, categories, userKbRoles } from '@dovetail/db';
+import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { resolveKb, requireKbAdmin } from '../middleware/resolveKb.js';
+import { buildAdminActivityInsert } from '../services/admin-activity.js';
 import { validateBody } from '../utils/validate.js';
 import { toSlug } from '../utils/slug.js';
 
@@ -32,16 +33,30 @@ knowledgeBasesRouter.post(
   authMiddleware,
   requireRole('admin'),
   validateBody(createKbSchema),
-  async (req, res) => {
+  async (req: AuthRequest, res) => {
     const { name, description } = req.body;
     const slug = toSlug(name);
     try {
       const [created] = await db.insert(knowledgeBases).values({ name, slug, description: description ?? null }).returning();
+      await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+        kind: 'kb.created',
+        actorId: req.user!.id,
+        knowledgeBaseId: created.id,
+        subjectId: created.id,
+        subjectLabel: created.name,
+      }));
       res.status(201).json(created);
     } catch (err: any) {
       if (err.code === '23505' && err.constraint_name?.includes('slug')) {
         const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
         const [created] = await db.insert(knowledgeBases).values({ name, slug: uniqueSlug, description: description ?? null }).returning();
+        await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+          kind: 'kb.created',
+          actorId: req.user!.id,
+          knowledgeBaseId: created.id,
+          subjectId: created.id,
+          subjectLabel: created.name,
+        }));
         res.status(201).json(created);
       } else {
         throw err;
@@ -87,8 +102,9 @@ knowledgeBasesRouter.patch(
 );
 
 // DELETE /api/knowledge-bases/:id — delete KB (global admin only, fails if has categories)
-knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
+  const [kb] = await db.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
 
   const [catCount] = await db
     .select({ count: sql<number>`count(*)` })
@@ -101,6 +117,17 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
   }
 
   await db.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
+
+  if (kb) {
+    await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'kb.deleted',
+      actorId: req.user!.id,
+      knowledgeBaseId: id,
+      subjectId: id,
+      subjectLabel: kb.name,
+    }));
+  }
+
   res.status(204).end();
 });
 

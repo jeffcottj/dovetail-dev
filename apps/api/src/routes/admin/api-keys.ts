@@ -2,9 +2,10 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { db, apiKeys, apiKeyKnowledgeBases } from '@dovetail/db';
+import { adminActivityEvents, db, apiKeys, apiKeyKnowledgeBases } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 import { validateBody } from '../../utils/validate.js';
 
 export const apiKeysRouter: Router = Router();
@@ -30,6 +31,13 @@ apiKeysRouter.post('/', authMiddleware, requireRole('admin'), validateBody(creat
   await db.insert(apiKeyKnowledgeBases).values(
     knowledgeBaseIds.map((kbId: string) => ({ apiKeyId: created.id, knowledgeBaseId: kbId })),
   );
+
+  await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+    kind: 'api_key.created',
+    actorId: req.user!.id,
+    subjectId: created.id,
+    subjectLabel: created.name,
+  }));
 
   res.status(201).json({
     id: created.id,
@@ -63,7 +71,7 @@ apiKeysRouter.get('/', authMiddleware, requireRole('admin'), async (_req, res) =
 });
 
 // DELETE /api/admin/api-keys/:id — revoke an API key
-apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
 
   const [key] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
@@ -78,5 +86,13 @@ apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req, r
   }
 
   await db.update(apiKeys).set({ revokedAt: new Date() }).where(eq(apiKeys.id, id));
+
+  await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+    kind: 'api_key.revoked',
+    actorId: req.user!.id,
+    subjectId: key.id,
+    subjectLabel: key.name,
+  }));
+
   res.status(200).json({ message: 'API key revoked' });
 });

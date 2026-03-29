@@ -19,7 +19,10 @@ vi.mock('@dovetail/db', async (importOriginal) => {
 });
 
 import { app } from '../../app.js';
-import { db } from '@dovetail/db';
+import { adminActivityEvents, db } from '@dovetail/db';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
+
+const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
 
 describe('Knowledge Base routes', () => {
   let viewerToken: string;
@@ -64,7 +67,9 @@ describe('Knowledge Base routes', () => {
 
     it('creates a KB for admin', async () => {
       const created = { id: 'kb-new', name: 'Housing Law', slug: 'housing-law', description: null, createdAt: new Date() };
-      (db.insert as Mock).mockReturnValue(createChain([created]));
+      const activityInsert = createChain([{ id: 'evt-kb-create' }]);
+      (db.insert as Mock).mockReturnValueOnce(createChain([created]));
+      (db.insert as Mock).mockReturnValueOnce(activityInsert);
 
       const res = await supertest(app)
         .post('/api/knowledge-bases')
@@ -73,12 +78,19 @@ describe('Knowledge Base routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.slug).toBe('housing-law');
+      expect((db.insert as Mock).mock.calls[1]?.[0]).toBe(adminActivityEvents);
+      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'kb.created',
+        actorId: 'user-3',
+        knowledgeBaseId: created.id,
+        subjectId: created.id,
+        subjectLabel: created.name,
+      }));
     });
   });
 
   describe('GET /api/knowledge-bases/:id', () => {
     it('returns KB details', async () => {
-      const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
       (db.select as Mock).mockReturnValue(createChain([mockKb]));
 
       const res = await supertest(app)
@@ -124,7 +136,9 @@ describe('Knowledge Base routes', () => {
     });
 
     it('returns 409 when KB has categories', async () => {
-      (db.select as Mock).mockReturnValueOnce(createChain([{ count: 1 }]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([{ count: 1 }]));
 
       const res = await supertest(app)
         .delete('/api/knowledge-bases/kb-1')
@@ -133,13 +147,25 @@ describe('Knowledge Base routes', () => {
     });
 
     it('deletes KB when empty', async () => {
-      (db.select as Mock).mockReturnValueOnce(createChain([{ count: 0 }]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([{ count: 0 }]));
       (db.delete as Mock).mockReturnValue(createChain(undefined));
+      const activityInsert = createChain([{ id: 'evt-kb-delete' }]);
+      (db.insert as Mock).mockReturnValueOnce(activityInsert);
 
       const res = await supertest(app)
         .delete('/api/knowledge-bases/kb-1')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(204);
+      expect(db.insert).toHaveBeenCalledWith(adminActivityEvents);
+      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'kb.deleted',
+        actorId: 'user-3',
+        knowledgeBaseId: 'kb-1',
+        subjectId: 'kb-1',
+        subjectLabel: 'Default',
+      }));
     });
   });
 

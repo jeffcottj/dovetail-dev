@@ -19,7 +19,8 @@ vi.mock('@dovetail/db', async (importOriginal) => {
 });
 
 import { app } from '../../../app.js';
-import { db } from '@dovetail/db';
+import { adminActivityEvents, db } from '@dovetail/db';
+import { buildAdminActivityInsert } from '../../../services/admin-activity.js';
 
 const KEY_ID = '00000000-0000-4000-8000-000000000099';
 
@@ -64,6 +65,8 @@ describe('Admin API key routes', () => {
       (db.insert as Mock).mockReturnValueOnce(insertChain);
       // Mock apiKeyKnowledgeBases insert
       (db.insert as Mock).mockReturnValueOnce(createChain([]));
+      const activityInsert = createChain([{ id: 'evt-1' }]);
+      (db.insert as Mock).mockReturnValueOnce(activityInsert);
 
       const res = await supertest(app)
         .post('/api/admin/api-keys')
@@ -77,6 +80,13 @@ describe('Admin API key routes', () => {
       expect(typeof res.body.key).toBe('string');
       expect(res.body.key.length).toBeGreaterThan(0);
       expect(res.body.knowledgeBaseIds).toEqual(['00000000-0000-4000-8000-000000000001']);
+      expect((db.insert as Mock).mock.calls[2]?.[0]).toBe(adminActivityEvents);
+      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'api_key.created',
+        actorId: 'admin-1',
+        subjectId: KEY_ID,
+        subjectLabel: 'Test Key',
+      }));
     });
   });
 
@@ -165,12 +175,21 @@ describe('Admin API key routes', () => {
 
       const updateChain = createChain([]);
       (db.update as Mock).mockReturnValueOnce(updateChain);
+      const activityInsert = createChain([{ id: 'evt-2' }]);
+      (db.insert as Mock).mockReturnValueOnce(activityInsert);
 
       const res = await supertest(app)
         .delete(`/api/admin/api-keys/${KEY_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('API key revoked');
+      expect(db.insert).toHaveBeenCalledWith(adminActivityEvents);
+      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'api_key.revoked',
+        actorId: 'admin-1',
+        subjectId: KEY_ID,
+        subjectLabel: 'Test Key',
+      }));
     });
   });
 });
