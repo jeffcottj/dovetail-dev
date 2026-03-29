@@ -6,7 +6,7 @@ import { authMiddleware } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { validateBody } from '../../utils/validate.js';
 
-export const bulkPublishRouter: Router = Router();
+export const bulkPublishRouter: Router = Router({ mergeParams: true });
 
 const bulkPublishSchema = z.object({
   importJobId: z.string().uuid().optional(),

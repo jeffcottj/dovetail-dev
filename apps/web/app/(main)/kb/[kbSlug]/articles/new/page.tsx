@@ -1,14 +1,21 @@
-import { redirect } from 'next/navigation';
-import { apiFetch } from '../../../../lib/api';
-import { auth } from '../../../../auth';
-import { ArticleCreateForm } from '../../../../components/ArticleCreateForm';
+import { notFound, redirect } from 'next/navigation';
+import { apiFetch } from '../../../../../../lib/api';
+import { getKbBySlug } from '../../../../../../lib/kb';
+import { auth } from '../../../../../../auth';
+import { ArticleCreateForm } from '../../../../../../components/ArticleCreateForm';
 import type { Category } from '@dovetail/types';
 
-export default async function NewArticlePage({
+export default async function KbNewArticlePage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ kbSlug: string }>;
   searchParams: Promise<{ categoryId?: string }>;
 }) {
+  const { kbSlug } = await params;
+  const kb = await getKbBySlug(kbSlug);
+  if (!kb) notFound();
+
   const session = await auth();
   const userRole = session?.user?.role ?? 'viewer';
 
@@ -20,7 +27,9 @@ export default async function NewArticlePage({
 
   let categories: Category[] = [];
   try {
-    categories = await apiFetch<Category[]>('/api/categories');
+    categories = await apiFetch<Category[]>(
+      `/api/knowledge-bases/${kb.id}/categories`,
+    );
   } catch {
     // If categories fail to load, we still render the form (selector will be empty)
   }

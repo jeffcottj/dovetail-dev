@@ -1,14 +1,15 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { apiFetch } from '../../../../lib/api';
-import { auth } from '../../../../auth';
-import { ArticleContent } from '../../../../components/ArticleContent';
-import { ArticleActions } from '../../../../components/ArticleActions';
-import { ArticleEditor } from '../../../../components/ArticleEditor';
-import { RestoreButton } from '../../../../components/RestoreButton';
-import { Breadcrumbs } from '../../../../components/Breadcrumbs';
-import { Badge } from '../../../../components/ui/Badge';
-import type { Article, ArticleVersion, Category, Tag } from '@dovetail/types';
+import { apiFetch } from '../../../../../../lib/api';
+import { getKbBySlug } from '../../../../../../lib/kb';
+import { auth } from '../../../../../../auth';
+import { ArticleContent } from '../../../../../../components/ArticleContent';
+import { ArticleActions } from '../../../../../../components/ArticleActions';
+import { ArticleEditor } from '../../../../../../components/ArticleEditor';
+import { RestoreButton } from '../../../../../../components/RestoreButton';
+import { Breadcrumbs } from '../../../../../../components/Breadcrumbs';
+import { Badge } from '../../../../../../components/ui/Badge';
+import type { Article, ArticleVersion, Category, KnowledgeBase, Tag } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -17,37 +18,42 @@ interface PaginatedResponse<T> {
   limit: number;
 }
 
-export default async function ArticleCatchAllPage({
+export default async function KbArticleCatchAllPage({
   params,
 }: {
-  params: Promise<{ slugPath: string[] }>;
+  params: Promise<{ kbSlug: string; slugPath: string[] }>;
 }) {
-  const { slugPath } = await params;
+  const { kbSlug, slugPath } = await params;
+
+  const kb = await getKbBySlug(kbSlug);
+  if (!kb) notFound();
+
   const lastSegment = slugPath[slugPath.length - 1];
 
-  // Dispatch based on trailing segment
   if (lastSegment === 'edit') {
-    return renderEditPage(slugPath.slice(0, -1));
+    return renderEditPage(kb, kbSlug, slugPath.slice(0, -1));
   }
   if (lastSegment === 'history') {
-    return renderHistoryPage(slugPath.slice(0, -1));
+    return renderHistoryPage(kb, kbSlug, slugPath.slice(0, -1));
   }
-  return renderViewPage(slugPath);
+  return renderViewPage(kb, kbSlug, slugPath);
 }
 
 // ── View ────────────────────────────────────────────────────────────────────
 
-async function renderViewPage(slugPath: string[]) {
+async function renderViewPage(kb: KnowledgeBase, kbSlug: string, slugPath: string[]) {
   const session = await auth();
 
   let article: Article;
   try {
-    article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
+    article = await apiFetch<Article>(
+      `/api/knowledge-bases/${kb.id}/articles/by-path/${slugPath.join('/')}`,
+    );
   } catch {
     notFound();
   }
 
-  const fullPath = `/articles/${slugPath.join('/')}`;
+  const fullPath = `/kb/${kbSlug}/articles/${slugPath.join('/')}`;
   const globalRole = session?.user?.role ?? 'viewer';
   let canEdit = globalRole === 'editor' || globalRole === 'admin';
 
@@ -55,7 +61,7 @@ async function renderViewPage(slugPath: string[]) {
   if (!canEdit && session?.user && article.categoryId) {
     try {
       const { role: effectiveRole } = await apiFetch<{ role: string }>(
-        `/api/me/effective-role?categoryId=${article.categoryId}`,
+        `/api/me/effective-role?categoryId=${article.categoryId}&knowledgeBaseId=${kb.id}`,
       );
       canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
     } catch {
@@ -66,7 +72,9 @@ async function renderViewPage(slugPath: string[]) {
   let categories: Category[] = [];
   if (canEdit) {
     try {
-      categories = await apiFetch<Category[]>('/api/categories');
+      categories = await apiFetch<Category[]>(
+        `/api/knowledge-bases/${kb.id}/categories`,
+      );
     } catch {
       // Categories unavailable
     }
@@ -74,7 +82,7 @@ async function renderViewPage(slugPath: string[]) {
 
   let articleTags: Tag[] = [];
   try {
-    articleTags = await apiFetch<Tag[]>(`/api/articles/${article.id}/tags`);
+    articleTags = await apiFetch<Tag[]>(`/api/knowledge-bases/${kb.id}/articles/${article.id}/tags`);
   } catch {
     // Tags unavailable
   }
@@ -113,7 +121,7 @@ async function renderViewPage(slugPath: string[]) {
                 {articleTags.map((tag) => (
                   <Link
                     key={tag.id}
-                    href={`/search?tags=${tag.id}`}
+                    href={`/kb/${kbSlug}/search?tags=${tag.id}`}
                     className="inline-flex items-center text-xs font-[family-name:var(--font-ui)] font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
                   >
                     {tag.name}
@@ -137,13 +145,15 @@ async function renderViewPage(slugPath: string[]) {
 
 // ── Edit ────────────────────────────────────────────────────────────────────
 
-async function renderEditPage(slugPath: string[]) {
+async function renderEditPage(kb: KnowledgeBase, kbSlug: string, slugPath: string[]) {
   const session = await auth();
   const globalRole = session?.user?.role ?? 'viewer';
 
   let article: Article;
   try {
-    article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
+    article = await apiFetch<Article>(
+      `/api/knowledge-bases/${kb.id}/articles/by-path/${slugPath.join('/')}`,
+    );
   } catch {
     notFound();
   }
@@ -154,7 +164,7 @@ async function renderEditPage(slugPath: string[]) {
   if (!canEdit && session?.user && article.categoryId) {
     try {
       const { role: effectiveRole } = await apiFetch<{ role: string }>(
-        `/api/me/effective-role?categoryId=${article.categoryId}`,
+        `/api/me/effective-role?categoryId=${article.categoryId}&knowledgeBaseId=${kb.id}`,
       );
       canEdit = effectiveRole === 'editor' || effectiveRole === 'admin';
     } catch {
@@ -163,7 +173,7 @@ async function renderEditPage(slugPath: string[]) {
   }
 
   if (!canEdit) {
-    redirect(`/articles/${slugPath.join('/')}`);
+    redirect(`/kb/${kbSlug}/articles/${slugPath.join('/')}`);
   }
 
   return (
@@ -180,20 +190,22 @@ async function renderEditPage(slugPath: string[]) {
 
 // ── History ─────────────────────────────────────────────────────────────────
 
-async function renderHistoryPage(slugPath: string[]) {
+async function renderHistoryPage(kb: KnowledgeBase, kbSlug: string, slugPath: string[]) {
   const session = await auth();
 
   let article: Article;
   try {
-    article = await apiFetch<Article>(`/api/articles/by-path/${slugPath.join('/')}`);
+    article = await apiFetch<Article>(
+      `/api/knowledge-bases/${kb.id}/articles/by-path/${slugPath.join('/')}`,
+    );
   } catch {
     notFound();
   }
 
-  const fullPath = `/articles/${slugPath.join('/')}`;
+  const fullPath = `/kb/${kbSlug}/articles/${slugPath.join('/')}`;
 
   const { data: versions } = await apiFetch<PaginatedResponse<ArticleVersion>>(
-    `/api/articles/${article.id}/versions?limit=50`,
+    `/api/knowledge-bases/${kb.id}/articles/${article.id}/versions?limit=50`,
   );
 
   const globalRole = session?.user?.role ?? 'viewer';
@@ -203,7 +215,7 @@ async function renderHistoryPage(slugPath: string[]) {
   if (!canRestore && session?.user && article.categoryId) {
     try {
       const { role: effectiveRole } = await apiFetch<{ role: string }>(
-        `/api/me/effective-role?categoryId=${article.categoryId}`,
+        `/api/me/effective-role?categoryId=${article.categoryId}&knowledgeBaseId=${kb.id}`,
       );
       canRestore = effectiveRole === 'editor' || effectiveRole === 'admin';
     } catch {

@@ -10,6 +10,7 @@ import { EditorToolbar } from './EditorToolbar';
 import { apiClientFetch } from '../lib/api-client';
 import { buildTree, flattenTree } from '../lib/categories';
 import { useToast } from '../lib/hooks/useToast';
+import { useOptionalKb } from '../lib/hooks/useKb';
 import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
 import { articleUrl } from '../lib/article-url';
@@ -23,6 +24,8 @@ interface ArticleCreateFormProps {
 export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCreateFormProps) {
   const router = useRouter();
   const toast = useToast();
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState(defaultCategoryId ?? '');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
@@ -48,14 +51,14 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   const assignTags = useCallback(async (articleId: string) => {
     if (selectedTags.length === 0) return;
     try {
-      await apiClientFetch(`/api/articles/${articleId}/tags`, {
+      await apiClientFetch(`${apiBase}/articles/${articleId}/tags`, {
         method: 'POST',
         body: JSON.stringify({ tagIds: selectedTags.map((t) => t.id) }),
       });
     } catch {
       // Tag assignment is best-effort on create
     }
-  }, [selectedTags]);
+  }, [selectedTags, apiBase]);
 
   const handleSave = useCallback(async () => {
     if (!editor || !title.trim()) return;
@@ -65,7 +68,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     }
     setSaving(true);
     try {
-      const created = await apiClientFetch<Article>('/api/articles', {
+      const created = await apiClientFetch<Article>(`${apiBase}/articles`, {
         method: 'POST',
         body: JSON.stringify({
           title: title.trim(),
@@ -83,7 +86,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     } finally {
       setSaving(false);
     }
-  }, [editor, title, categoryId, router, assignTags, toast]);
+  }, [editor, title, categoryId, router, assignTags, toast, apiBase]);
 
   const handlePublish = useCallback(async () => {
     if (!editor || !title.trim()) return;
@@ -94,7 +97,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     setPublishing(true);
     try {
       // Create the article as draft first
-      const created = await apiClientFetch<Article>('/api/articles', {
+      const created = await apiClientFetch<Article>(`${apiBase}/articles`, {
         method: 'POST',
         body: JSON.stringify({
           title: title.trim(),
@@ -104,7 +107,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
       });
       await assignTags(created.id);
       // Then publish it
-      await apiClientFetch(`/api/articles/${created.id}/publish`, {
+      await apiClientFetch(`${apiBase}/articles/${created.id}/publish`, {
         method: 'POST',
       });
       toast.success('Article published');
@@ -116,7 +119,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     } finally {
       setPublishing(false);
     }
-  }, [editor, title, categoryId, router, assignTags, toast]);
+  }, [editor, title, categoryId, router, assignTags, toast, apiBase]);
 
   const busy = saving || publishing;
   const canSubmit = title.trim().length > 0 && !busy;

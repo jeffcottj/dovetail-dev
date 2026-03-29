@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
+import { useOptionalKb } from '../lib/hooks/useKb';
 
 export function RestoreButton({
   articleId,
@@ -14,6 +15,8 @@ export function RestoreButton({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
   const [restoring, setRestoring] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
 
@@ -36,7 +39,7 @@ export function RestoreButton({
           setRestoring(true);
           try {
             await apiClientFetch(
-              `/api/articles/${articleId}/versions/${versionId}/restore`,
+              `${apiBase}/articles/${articleId}/versions/${versionId}/restore`,
               { method: 'POST' },
             );
             router.refresh();

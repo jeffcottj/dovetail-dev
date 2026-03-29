@@ -1,10 +1,11 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
-import { apiFetch } from '../../../lib/api';
-import { SearchFilters } from '../../../components/SearchFilters';
-import { Badge } from '../../../components/ui/Badge';
-import { articleUrl } from '../../../lib/article-url';
+import { apiFetch } from '../../../../../lib/api';
+import { getKbBySlug } from '../../../../../lib/kb';
+import { SearchFilters } from '../../../../../components/SearchFilters';
+import { Badge } from '../../../../../components/ui/Badge';
+import { articleUrl } from '../../../../../lib/article-url';
 import type { Category } from '@dovetail/types';
 
 interface SearchResult {
@@ -35,9 +36,11 @@ const MODE_DISPLAY: Record<string, string> = {
   hybrid: 'hybrid',
 };
 
-export default async function SearchPage({
+export default async function KbSearchPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ kbSlug: string }>;
   searchParams: Promise<{
     q?: string;
     page?: string;
@@ -49,8 +52,21 @@ export default async function SearchPage({
     tags?: string;
   }>;
 }) {
-  const params = await searchParams;
-  const { q, page: pageStr, mode, categoryId, authorId, from, to, tags } = params;
+  const { kbSlug } = await params;
+  const kb = await getKbBySlug(kbSlug);
+  if (!kb) {
+    return (
+      <div>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-ink tracking-tight mb-4">
+          Search
+        </h1>
+        <p className="text-danger">Knowledge base not found.</p>
+      </div>
+    );
+  }
+
+  const sp = await searchParams;
+  const { q, page: pageStr, mode, categoryId, authorId, from, to, tags } = sp;
 
   if (!q) {
     return (
@@ -87,10 +103,10 @@ export default async function SearchPage({
   let categoryMap = new Map<string, string>();
 
   try {
-    // Fetch search results and categories in parallel
+    // Fetch search results and categories in parallel (KB-scoped)
     const [searchResults, categories] = await Promise.all([
-      apiFetch<PaginatedResponse<SearchResult>>(`/api/search?${apiParams}`),
-      apiFetch<Category[]>('/api/categories').catch(() => [] as Category[]),
+      apiFetch<PaginatedResponse<SearchResult>>(`/api/knowledge-bases/${kb.id}/search?${apiParams}`),
+      apiFetch<Category[]>(`/api/knowledge-bases/${kb.id}/categories`).catch(() => [] as Category[]),
     ]);
     results = searchResults;
     categoryMap = new Map(categories.map((c) => [c.id, c.name]));
@@ -108,7 +124,7 @@ export default async function SearchPage({
     );
   }
 
-  // Build pagination URL preserving all current params
+  // Build pagination URL preserving all current params (KB-scoped)
   function paginationHref(targetPage: number) {
     const p = new URLSearchParams();
     p.set('q', q!);
@@ -119,7 +135,7 @@ export default async function SearchPage({
     if (from) p.set('from', from);
     if (to) p.set('to', to);
     if (tags) p.set('tags', tags);
-    return `/search?${p.toString()}`;
+    return `/kb/${kbSlug}/search?${p.toString()}`;
   }
 
   const totalPages = Math.ceil(results.total / results.limit);
@@ -162,7 +178,7 @@ export default async function SearchPage({
             {results.data.map((result) => (
               <li key={result.id}>
                 <Link
-                  href={articleUrl(result)}
+                  href={articleUrl(result, kbSlug)}
                   className="block px-4 py-4 -mx-4 rounded-lg hover:bg-parchment-warm transition-colors duration-150 group"
                 >
                   <div className="flex items-start justify-between gap-4">

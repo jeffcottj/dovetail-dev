@@ -5,6 +5,7 @@ import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
+import { useOptionalKb } from '../lib/hooks/useKb';
 import { buildTree, flattenTree } from '../lib/categories';
 import type { Category } from '@dovetail/types';
 
@@ -29,6 +30,8 @@ export function CategoryModal({
 }: CategoryModalProps) {
   const isEditing = !!category;
   const toast = useToast();
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
 
   const [name, setName] = useState('');
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
@@ -76,12 +79,12 @@ export function CategoryModal({
 
     try {
       if (isEditing) {
-        await apiClientFetch(`/api/categories/${category.id}`, {
+        await apiClientFetch(`${apiBase}/categories/${category.id}`, {
           method: 'PATCH',
           body: JSON.stringify({ name: trimmed }),
         });
       } else {
-        await apiClientFetch('/api/categories', {
+        await apiClientFetch(`${apiBase}/categories`, {
           method: 'POST',
           body: JSON.stringify({
             name: trimmed,

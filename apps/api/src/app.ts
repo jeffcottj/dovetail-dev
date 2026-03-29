@@ -28,16 +28,17 @@ import { meRouter } from './routes/me.js';
 app.use('/api/me', meRouter);
 
 import { categoriesRouter } from './routes/categories.js';
-app.use('/api/categories', categoriesRouter);
+import { resolveKb } from './middleware/resolveKb.js';
+app.use('/api/knowledge-bases/:kbId/categories', resolveKb, categoriesRouter);
 
 import { articlesRouter } from './routes/articles.js';
-app.use('/api/articles', articlesRouter);
+app.use('/api/knowledge-bases/:kbId/articles', resolveKb, articlesRouter);
 
 import { versionsRouter } from './routes/versions.js';
-app.use('/api/articles/:id/versions', versionsRouter);
+app.use('/api/knowledge-bases/:kbId/articles/:id/versions', resolveKb, versionsRouter);
 
 import { searchRouter } from './routes/search.js';
-app.use('/api/search', searchRouter);
+app.use('/api/knowledge-bases/:kbId/search', resolveKb, searchRouter);
 
 import { apiKeysRouter } from './routes/admin/api-keys.js';
 app.use('/api/admin/api-keys', apiKeysRouter);
@@ -49,14 +50,17 @@ import { ragRouter } from './routes/rag.js';
 app.use('/api/v1/rag', ragRouter);
 
 import { tagsRouter, articleTagsRouter } from './routes/tags.js';
-app.use('/api/tags', tagsRouter);
-app.use('/api/articles/:id/tags', articleTagsRouter);
+app.use('/api/knowledge-bases/:kbId/tags', resolveKb, tagsRouter);
+app.use('/api/knowledge-bases/:kbId/articles/:id/tags', resolveKb, articleTagsRouter);
 
 import { importRouter } from './routes/admin/import.js';
-app.use('/api/admin/import', importRouter);
+app.use('/api/knowledge-bases/:kbId/admin/import', resolveKb, importRouter);
 
 import { bulkPublishRouter } from './routes/admin/bulk-publish.js';
-app.use('/api/admin/articles/bulk-publish', bulkPublishRouter);
+app.use('/api/knowledge-bases/:kbId/admin/articles/bulk-publish', resolveKb, bulkPublishRouter);
+
+import { knowledgeBasesRouter } from './routes/knowledge-bases.js';
+app.use('/api/knowledge-bases', knowledgeBasesRouter);
 
 // --- Mount route files above this line ---
 

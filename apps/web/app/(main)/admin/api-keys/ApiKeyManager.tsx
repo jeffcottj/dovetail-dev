@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import type { KnowledgeBase } from '@dovetail/types';
 import { apiClientFetch } from '../../../../lib/api-client';
 import { useToast } from '../../../../lib/hooks/useToast';
 import { Button } from '../../../../components/ui/Button';
@@ -12,6 +13,8 @@ interface ApiKey {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  knowledgeBaseIds?: string[];
+  knowledgeBaseNames?: string[];
 }
 
 export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
@@ -21,7 +24,17 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [selectedKbIds, setSelectedKbIds] = useState<string[]>([]);
   const toast = useToast();
+
+  useEffect(() => {
+    apiClientFetch<KnowledgeBase[]>('/api/knowledge-bases')
+      .then(setKnowledgeBases)
+      .catch(() => {
+        // Failed to load KBs — KB selection will be unavailable
+      });
+  }, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -29,16 +42,29 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
     setCreating(true);
     setCreateError(null);
     try {
-      const result = await apiClientFetch<{ id: string; name: string; key: string; createdAt: string }>(
+      const result = await apiClientFetch<{ id: string; name: string; key: string; createdAt: string; knowledgeBaseIds?: string[] }>(
         '/api/admin/api-keys',
-        { method: 'POST', body: JSON.stringify({ name: newKeyName }) },
+        { method: 'POST', body: JSON.stringify({ name: newKeyName, knowledgeBaseIds: selectedKbIds.length > 0 ? selectedKbIds : undefined }) },
       );
       setCreatedKey(result.key);
+      const kbNames = selectedKbIds.length > 0
+        ? knowledgeBases.filter((kb) => selectedKbIds.includes(kb.id)).map((kb) => kb.name)
+        : [];
       setKeys((prev) => [
         ...prev,
-        { id: result.id, name: result.name, createdBy: '', createdAt: result.createdAt, lastUsedAt: null, revokedAt: null },
+        {
+          id: result.id,
+          name: result.name,
+          createdBy: '',
+          createdAt: result.createdAt,
+          lastUsedAt: null,
+          revokedAt: null,
+          knowledgeBaseIds: selectedKbIds.length > 0 ? selectedKbIds : undefined,
+          knowledgeBaseNames: kbNames.length > 0 ? kbNames : undefined,
+        },
       ]);
       setNewKeyName('');
+      setSelectedKbIds([]);
       toast.success('API key created');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create API key');
@@ -64,23 +90,55 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
 
   return (
     <div className="space-y-8">
-      <form onSubmit={handleCreate} className="flex gap-3 items-end">
-        <div className="flex-1">
-          <label htmlFor="api-key-name" className="block text-xs font-[family-name:var(--font-ui)] uppercase tracking-wider text-ink-muted font-semibold mb-1">
-            Key name
-          </label>
-          <input
-            id="api-key-name"
-            type="text"
-            value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
-            placeholder="e.g., LibreChat production"
-            className="w-full border border-border rounded px-3 py-2 text-sm bg-parchment font-[family-name:var(--font-ui)]"
-          />
+      <form onSubmit={handleCreate} className="space-y-4">
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label htmlFor="api-key-name" className="block text-xs font-[family-name:var(--font-ui)] uppercase tracking-wider text-ink-muted font-semibold mb-1">
+              Key name
+            </label>
+            <input
+              id="api-key-name"
+              type="text"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              placeholder="e.g., LibreChat production"
+              className="w-full border border-border rounded px-3 py-2 text-sm bg-parchment font-[family-name:var(--font-ui)]"
+            />
+          </div>
+          <Button type="submit" loading={creating} disabled={!newKeyName.trim()}>
+            Create Key
+          </Button>
         </div>
-        <Button type="submit" loading={creating} disabled={!newKeyName.trim()}>
-          Create Key
-        </Button>
+
+        {knowledgeBases.length > 0 && (
+          <div>
+            <label className="block text-xs font-[family-name:var(--font-ui)] uppercase tracking-wider text-ink-muted font-semibold mb-2">
+              Knowledge Bases
+            </label>
+            <p className="text-xs text-ink-muted font-[family-name:var(--font-ui)] mb-2">
+              Select which knowledge bases this key can access. Leave all unchecked to grant access to all.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {knowledgeBases.map((kb) => (
+                <label key={kb.id} className="flex items-center gap-1.5 text-sm font-[family-name:var(--font-ui)] text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedKbIds.includes(kb.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedKbIds((prev) => [...prev, kb.id]);
+                      } else {
+                        setSelectedKbIds((prev) => prev.filter((id) => id !== kb.id));
+                      }
+                    }}
+                    className="rounded border-border"
+                  />
+                  {kb.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
       </form>
 
       {createError && (
@@ -114,6 +172,9 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
                 Name
               </th>
               <th className="text-left px-4 py-3 font-[family-name:var(--font-ui)] text-xs uppercase tracking-wider text-ink-muted font-semibold">
+                Knowledge Bases
+              </th>
+              <th className="text-left px-4 py-3 font-[family-name:var(--font-ui)] text-xs uppercase tracking-wider text-ink-muted font-semibold">
                 Created
               </th>
               <th className="text-left px-4 py-3 font-[family-name:var(--font-ui)] text-xs uppercase tracking-wider text-ink-muted font-semibold">
@@ -131,6 +192,11 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
             {keys.map((key) => (
               <tr key={key.id} className="border-b border-border-light last:border-0">
                 <td className="px-4 py-3 text-sm text-ink">{key.name}</td>
+                <td className="px-4 py-3 text-sm text-ink-light">
+                  {key.knowledgeBaseNames && key.knowledgeBaseNames.length > 0
+                    ? key.knowledgeBaseNames.join(', ')
+                    : <span className="text-ink-muted">All</span>}
+                </td>
                 <td className="px-4 py-3 text-sm text-ink-light">
                   {new Date(key.createdAt).toLocaleDateString()}
                 </td>
@@ -163,7 +229,7 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
             ))}
             {keys.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-ink-muted text-sm">
+                <td colSpan={6} className="px-4 py-8 text-center text-ink-muted text-sm">
                   No API keys created yet.
                 </td>
               </tr>

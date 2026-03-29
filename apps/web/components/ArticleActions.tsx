@@ -9,6 +9,7 @@ import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
+import { useOptionalKb } from '../lib/hooks/useKb';
 import { buildTree, type TreeNode } from '../lib/categories';
 import { articleUrl } from '../lib/article-url';
 import type { Article, Category } from '@dovetail/types';
@@ -95,6 +96,8 @@ interface ArticleActionsProps {
 export function ArticleActions({ article, categories }: ArticleActionsProps) {
   const router = useRouter();
   const toast = useToast();
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
   const [moveModalOpen, setMoveModalOpen] = useState(false);
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
@@ -112,7 +115,7 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
     setMoving(true);
     setMoveError(null);
     try {
-      await apiClientFetch(`/api/articles/${article.id}`, {
+      await apiClientFetch(`${apiBase}/articles/${article.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ categoryId: selectedCategoryId }),
       });
@@ -131,12 +134,12 @@ export function ArticleActions({ article, categories }: ArticleActionsProps) {
     setArchiving(true);
     setArchiveError(null);
     try {
-      await apiClientFetch(`/api/articles/${article.id}`, {
+      await apiClientFetch(`${apiBase}/articles/${article.id}`, {
         method: 'DELETE',
       });
       setArchiveModalOpen(false);
       toast.success('Article archived');
-      router.push('/');
+      router.push(kb ? `/kb/${kb.slug}` : '/');
     } catch (err) {
       setArchiveError(err instanceof Error ? err.message : 'Failed to archive article');
     } finally {

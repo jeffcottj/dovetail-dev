@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { FilePlus } from 'lucide-react';
-import { apiFetch } from '../../../../lib/api';
-import { articleUrl } from '../../../../lib/article-url';
-import { RoleGate } from '../../../../components/RoleGate';
-import { Button } from '../../../../components/ui/Button';
-import { CategorySearch } from '../../../../components/CategorySearch';
+import { apiFetch } from '../../../../../../lib/api';
+import { getKbBySlug } from '../../../../../../lib/kb';
+import { articleUrl } from '../../../../../../lib/article-url';
+import { RoleGate } from '../../../../../../components/RoleGate';
+import { Button } from '../../../../../../components/ui/Button';
+import { CategorySearch } from '../../../../../../components/CategorySearch';
 import type { Category, Article } from '@dovetail/types';
 
 interface PaginatedResponse<T> {
@@ -29,16 +30,20 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default async function CategoryPage({
+export default async function KbCategoryPage({
   params,
 }: {
-  params: Promise<{ slugPath: string[] }>;
+  params: Promise<{ kbSlug: string; slugPath: string[] }>;
 }) {
-  const { slugPath } = await params;
+  const { kbSlug, slugPath } = await params;
+
+  const kb = await getKbBySlug(kbSlug);
+  if (!kb) notFound();
+
   const targetSlug = slugPath[slugPath.length - 1];
 
-  // Fetch all categories to find the one matching the full path
-  const categories = await apiFetch<Category[]>('/api/categories');
+  // Fetch all categories for this KB to find the one matching the full path
+  const categories = await apiFetch<Category[]>(`/api/knowledge-bases/${kb.id}/categories`);
 
   // Build a lookup to resolve the path
   const byId = new Map(categories.map((c) => [c.id, c]));
@@ -58,7 +63,7 @@ export default async function CategoryPage({
   if (!category) notFound();
 
   const { data: articleList } = await apiFetch<PaginatedResponse<Article>>(
-    `/api/articles?categoryId=${category.id}&limit=50`,
+    `/api/knowledge-bases/${kb.id}/articles?categoryId=${category.id}&limit=50`,
   );
 
   return (
@@ -80,7 +85,7 @@ export default async function CategoryPage({
             No articles in this category yet.
           </p>
           <RoleGate minimumRole="editor">
-            <Link href={`/articles/new?categoryId=${category.id}`}>
+            <Link href={`/kb/${kbSlug}/articles/new?categoryId=${category.id}`}>
               <Button>
                 <FilePlus className="w-4 h-4" />
                 Create the first article
@@ -93,7 +98,7 @@ export default async function CategoryPage({
           {articleList.map((article) => (
             <li key={article.id}>
               <Link
-                href={articleUrl(article)}
+                href={articleUrl(article, kbSlug)}
                 className="block px-4 py-4 -mx-4 rounded-lg hover:bg-parchment-warm transition-colors duration-150 group"
               >
                 <div className="flex items-start justify-between gap-4">

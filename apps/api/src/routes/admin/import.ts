@@ -22,7 +22,7 @@ const tempSessions = new Map<string, { dir: string; createdAt: number }>();
 // Cleanup stale sessions after 1 hour
 const SESSION_TTL_MS = 60 * 60 * 1000;
 
-export const importRouter: Router = Router();
+export const importRouter: Router = Router({ mergeParams: true });
 
 // POST /api/admin/import/preview — upload ZIP, return summary
 importRouter.post(
@@ -139,8 +139,10 @@ importRouter.post(
     }
 
     // Create import job record
+    const kbId = req.params.kbId as string;
     const [job] = await db.insert(importJobs).values({
       createdBy: req.user!.id,
+      knowledgeBaseId: kbId,
       options,
     }).returning();
 
@@ -150,6 +152,7 @@ importRouter.post(
       userId: req.user!.id,
       defaultStatus: options.defaultStatus,
       jobId: job.id,
+      knowledgeBaseId: kbId,
     });
 
     // Wire up SSE listeners

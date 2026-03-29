@@ -1,12 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { apiClientFetch } from '../../../../lib/api-client';
-import { useToast } from '../../../../lib/hooks/useToast';
-import { Button } from '../../../../components/ui/Button';
+import { apiClientFetch } from '../lib/api-client';
+import { useOptionalKb } from '../lib/hooks/useKb';
+import { useToast } from '../lib/hooks/useToast';
+import { Button } from './ui/Button';
 import type { Tag } from '@dovetail/types';
 
 export function TagList({ initialTags }: { initialTags: Tag[] }) {
+  const kb = useOptionalKb();
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
   const [tags, setTags] = useState(initialTags);
   const [newTagName, setNewTagName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -18,7 +21,7 @@ export function TagList({ initialTags }: { initialTags: Tag[] }) {
     if (!newTagName.trim()) return;
     setCreating(true);
     try {
-      const created = await apiClientFetch<Tag>('/api/tags', {
+      const created = await apiClientFetch<Tag>(`${apiBase}/tags`, {
         method: 'POST',
         body: JSON.stringify({ name: newTagName.trim() }),
       });
@@ -35,7 +38,7 @@ export function TagList({ initialTags }: { initialTags: Tag[] }) {
   async function handleDelete(id: string) {
     setDeleting(id);
     try {
-      await apiClientFetch(`/api/tags/${id}`, { method: 'DELETE' });
+      await apiClientFetch(`${apiBase}/tags/${id}`, { method: 'DELETE' });
       setTags((prev) => prev.filter((t) => t.id !== id));
       toast.success('Tag deleted');
     } catch (err) {

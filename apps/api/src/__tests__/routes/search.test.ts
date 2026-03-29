@@ -38,6 +38,8 @@ const CAT_ID = '00000000-0000-4000-8000-000000000001';
 const ART_ID_1 = '00000000-0000-4000-8000-000000000010';
 const ART_ID_2 = '00000000-0000-4000-8000-000000000020';
 
+const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
+
 const mockSearchResult = {
   id: ART_ID_1,
   title: 'Legal Aid Overview',
@@ -58,15 +60,17 @@ describe('Search routes', () => {
     viewerToken = await makeToken({ sub: 'user-1', role: 'viewer' });
   });
 
-  describe('GET /api/search (fulltext — default)', () => {
+  describe('GET /api/knowledge-bases/kb-1/search (fulltext — default)', () => {
     it('returns 401 without auth', async () => {
-      const res = await supertest(app).get('/api/search?q=legal');
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      const res = await supertest(app).get('/api/knowledge-bases/kb-1/search?q=legal');
       expect(res.status).toBe(401);
     });
 
     it('returns 400 when q param is missing', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       const res = await supertest(app)
-        .get('/api/search')
+        .get('/api/knowledge-bases/kb-1/search')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
       expect(res.status).toBe(400);
     });
@@ -75,11 +79,12 @@ describe('Search routes', () => {
       const countChain = createChain([{ count: 1 }]);
       const dataChain = createChain([mockSearchResult]);
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(countChain)
         .mockReturnValueOnce(dataChain);
 
       const res = await supertest(app)
-        .get('/api/search?q=legal')
+        .get('/api/knowledge-bases/kb-1/search?q=legal')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -93,11 +98,12 @@ describe('Search routes', () => {
       const countChain = createChain([{ count: 50 }]);
       const dataChain = createChain([mockSearchResult]);
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(countChain)
         .mockReturnValueOnce(dataChain);
 
       const res = await supertest(app)
-        .get('/api/search?q=legal&page=2&limit=10')
+        .get('/api/knowledge-bases/kb-1/search?q=legal&page=2&limit=10')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -109,11 +115,12 @@ describe('Search routes', () => {
       const countChain = createChain([{ count: 1 }]);
       const dataChain = createChain([mockSearchResult]);
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(countChain)
         .mockReturnValueOnce(dataChain);
 
       const res = await supertest(app)
-        .get(`/api/search?q=legal&categoryId=${CAT_ID}`)
+        .get(`/api/knowledge-bases/kb-1/search?q=legal&categoryId=${CAT_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -124,11 +131,12 @@ describe('Search routes', () => {
       const countChain = createChain([{ count: 1 }]);
       const dataChain = createChain([mockSearchResult]);
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(countChain)
         .mockReturnValueOnce(dataChain);
 
       const res = await supertest(app)
-        .get('/api/search?q=legal&mode=fulltext')
+        .get('/api/knowledge-bases/kb-1/search?q=legal&mode=fulltext')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -136,8 +144,9 @@ describe('Search routes', () => {
     });
   });
 
-  describe('GET /api/search?mode=semantic', () => {
+  describe('GET /api/knowledge-bases/kb-1/search?mode=semantic', () => {
     it('returns semantic search results', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       // Semantic search uses db.execute for raw SQL
       (db.execute as Mock).mockResolvedValue([
         {
@@ -155,7 +164,7 @@ describe('Search routes', () => {
       ]);
 
       const res = await supertest(app)
-        .get('/api/search?q=legal&mode=semantic')
+        .get('/api/knowledge-bases/kb-1/search?q=legal&mode=semantic')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -164,10 +173,11 @@ describe('Search routes', () => {
     });
 
     it('returns empty results when no embeddings match', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.execute as Mock).mockResolvedValue([]);
 
       const res = await supertest(app)
-        .get('/api/search?q=nonexistent&mode=semantic')
+        .get('/api/knowledge-bases/kb-1/search?q=nonexistent&mode=semantic')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -175,12 +185,13 @@ describe('Search routes', () => {
     });
   });
 
-  describe('GET /api/search?mode=hybrid', () => {
+  describe('GET /api/knowledge-bases/kb-1/search?mode=hybrid', () => {
     it('returns merged results from fulltext and semantic', async () => {
       // Fulltext: count + results
       const countChain = createChain([{ count: 1 }]);
       const fulltextChain = createChain([mockSearchResult]);
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(countChain)
         .mockReturnValueOnce(fulltextChain);
 
@@ -201,7 +212,7 @@ describe('Search routes', () => {
       ]);
 
       const res = await supertest(app)
-        .get('/api/search?q=legal&mode=hybrid')
+        .get('/api/knowledge-bases/kb-1/search?q=legal&mode=hybrid')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -214,6 +225,7 @@ describe('Search routes', () => {
       const countChain = createChain([{ count: 1 }]);
       const fulltextChain = createChain([mockSearchResult]);
       (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(countChain)
         .mockReturnValueOnce(fulltextChain);
 
@@ -233,7 +245,7 @@ describe('Search routes', () => {
       ]);
 
       const res = await supertest(app)
-        .get('/api/search?q=legal&mode=hybrid')
+        .get('/api/knowledge-bases/kb-1/search?q=legal&mode=hybrid')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(200);
@@ -243,10 +255,11 @@ describe('Search routes', () => {
     });
   });
 
-  describe('GET /api/search invalid mode', () => {
+  describe('GET /api/knowledge-bases/kb-1/search invalid mode', () => {
     it('returns 400 for unknown mode', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       const res = await supertest(app)
-        .get('/api/search?q=legal&mode=invalid')
+        .get('/api/knowledge-bases/kb-1/search?q=legal&mode=invalid')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
 
       expect(res.status).toBe(400);

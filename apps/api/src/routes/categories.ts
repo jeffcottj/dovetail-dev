@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, categories, articles } from '@dovetail/db';
-import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { validateBody } from '../utils/validate.js';
 import { toSlug } from '../utils/slug.js';
+import type { KbRequest } from '../middleware/resolveKb.js';
 
-export const categoriesRouter: Router = Router();
+export const categoriesRouter: Router = Router({ mergeParams: true });
 
 const createCategorySchema = z.object({
   name: z.string().min(1).max(200),
@@ -19,8 +20,9 @@ const updateCategorySchema = z.object({
   parentId: z.string().uuid().nullable().optional(),
 });
 
-categoriesRouter.get('/', authMiddleware, async (_req, res) => {
-  const result = await db.select().from(categories);
+categoriesRouter.get('/', authMiddleware, async (req: KbRequest, res) => {
+  const kbId = req.params.kbId as string;
+  const result = await db.select().from(categories).where(eq(categories.knowledgeBaseId, kbId));
   res.json(result);
 });
 
@@ -29,16 +31,21 @@ categoriesRouter.post(
   authMiddleware,
   requireRole('editor'),
   validateBody(createCategorySchema),
-  async (req, res) => {
+  async (req: KbRequest, res) => {
+    const kbId = req.params.kbId as string;
     const { name, parentId } = req.body;
     const slug = toSlug(name);
     try {
-      const [created] = await db.insert(categories).values({ name, slug, parentId: parentId ?? null }).returning();
+      const [created] = await db.insert(categories).values({
+        name, slug, parentId: parentId ?? null, knowledgeBaseId: kbId,
+      }).returning();
       res.status(201).json(created);
     } catch (err: any) {
       if (err.code === '23505' && err.constraint_name?.includes('slug')) {
         const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
-        const [created] = await db.insert(categories).values({ name, slug: uniqueSlug, parentId: parentId ?? null }).returning();
+        const [created] = await db.insert(categories).values({
+          name, slug: uniqueSlug, parentId: parentId ?? null, knowledgeBaseId: kbId,
+        }).returning();
         res.status(201).json(created);
       } else {
         throw err;
@@ -52,8 +59,9 @@ categoriesRouter.patch(
   authMiddleware,
   requireRole('editor'),
   validateBody(updateCategorySchema),
-  async (req: AuthRequest, res) => {
+  async (req: KbRequest, res) => {
     const id = req.params.id as string;
+    const kbId = req.params.kbId as string;
     const updates: Record<string, unknown> = {};
     if (req.body.name !== undefined) {
       updates.name = req.body.name;
@@ -63,7 +71,7 @@ categoriesRouter.patch(
       updates.parentId = req.body.parentId;
     }
 
-    const [updated] = await db.update(categories).set(updates).where(eq(categories.id, id)).returning();
+    const [updated] = await db.update(categories).set(updates).where(and(eq(categories.id, id), eq(categories.knowledgeBaseId, kbId))).returning();
     if (!updated) {
       res.status(404).json({ error: 'Category not found' });
       return;
@@ -72,8 +80,9 @@ categoriesRouter.patch(
   },
 );
 
-categoriesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+categoriesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: KbRequest, res) => {
   const id = req.params.id as string;
+  const kbId = req.params.kbId as string;
 
   const [childCount] = await db
     .select({ count: sql<number>`count(*)` })
@@ -93,6 +102,6 @@ categoriesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req
     return;
   }
 
-  await db.delete(categories).where(eq(categories.id, id));
+  await db.delete(categories).where(and(eq(categories.id, id), eq(categories.knowledgeBaseId, kbId)));
   res.status(204).end();
 });

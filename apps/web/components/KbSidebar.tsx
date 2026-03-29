@@ -2,15 +2,21 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { apiFetch } from '../lib/api';
 import { auth } from '../auth';
-import type { Category, Role } from '@dovetail/types';
+import type { Category, KnowledgeBase, Role } from '@dovetail/types';
 import { SidebarCategories } from './SidebarCategories';
+import { KbSwitcher } from './KbSwitcher';
 
-export async function Sidebar() {
+export async function KbSidebar({ kbId, kbSlug }: { kbId: string; kbSlug: string }) {
   let categories: Category[] = [];
+  let knowledgeBases: KnowledgeBase[] = [];
+
   try {
-    categories = await apiFetch<Category[]>('/api/categories');
+    [categories, knowledgeBases] = await Promise.all([
+      apiFetch<Category[]>(`/api/knowledge-bases/${kbId}/categories`),
+      apiFetch<KnowledgeBase[]>('/api/knowledge-bases'),
+    ]);
   } catch {
-    // API unavailable — render empty sidebar
+    // API unavailable
   }
 
   const session = await auth();
@@ -31,8 +37,12 @@ export async function Sidebar() {
         </Link>
       </div>
 
+      <div className="px-3 py-3 border-b border-sidebar-hover">
+        <KbSwitcher knowledgeBases={knowledgeBases} currentSlug={kbSlug} />
+      </div>
+
       <nav aria-label="Categories" className="flex-1 overflow-y-auto py-3">
-        <SidebarCategories categories={categories} userRole={userRole} />
+        <SidebarCategories categories={categories} userRole={userRole} kbSlug={kbSlug} />
       </nav>
     </>
   );

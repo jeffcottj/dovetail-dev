@@ -13,6 +13,7 @@ import { Button } from './ui/Button';
 import { CategoryModal } from './CategoryModal';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
+import { useOptionalKb } from '../lib/hooks/useKb';
 
 interface TreeItemProps {
   node: TreeNode;
@@ -21,6 +22,7 @@ interface TreeItemProps {
   userRole: Role;
   categories: Category[];
   onMutationSuccess: () => void;
+  kbSlug?: string;
 }
 
 function TreeItem({
@@ -30,14 +32,21 @@ function TreeItem({
   userRole,
   categories,
   onMutationSuccess,
+  kbSlug,
 }: TreeItemProps) {
   const pathname = usePathname();
   const toast = useToast();
+  const kb = useOptionalKb();
   const [expanded, setExpanded] = useState(depth > 0);
   const hasChildren = node.children.length > 0;
   const categoryPath = [...slugPath, node.slug];
-  const isActive = pathname === `/categories/${categoryPath.join('/')}`;
+  const effectiveSlug = kbSlug ?? kb?.slug;
+  const href = effectiveSlug
+    ? `/kb/${effectiveSlug}/categories/${categoryPath.join('/')}`
+    : `/categories/${categoryPath.join('/')}`;
+  const isActive = pathname === href;
   const isAdmin = hasMinimumRole(userRole, 'admin');
+  const apiBase = kb ? `/api/knowledge-bases/${kb.id}` : '/api';
 
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -48,7 +57,7 @@ function TreeItem({
     setDeleting(true);
     setDeleteError(null);
     try {
-      await apiClientFetch(`/api/categories/${node.id}`, {
+      await apiClientFetch(`${apiBase}/categories/${node.id}`, {
         method: 'DELETE',
       });
       setDeleteModalOpen(false);
@@ -92,7 +101,7 @@ function TreeItem({
         )}
         {!hasChildren && <span className="w-4 shrink-0" />}
         <Link
-          href={`/categories/${categoryPath.join('/')}`}
+          href={href}
           className="flex-1 truncate"
         >
           {node.name}
@@ -140,6 +149,7 @@ function TreeItem({
               userRole={userRole}
               categories={categories}
               onMutationSuccess={onMutationSuccess}
+              kbSlug={kbSlug}
             />
           ))}
         </ul>
@@ -201,9 +211,10 @@ function TreeItem({
 interface SidebarTreeProps {
   categories: Category[];
   userRole: Role;
+  kbSlug?: string;
 }
 
-export function SidebarTree({ categories, userRole }: SidebarTreeProps) {
+export function SidebarTree({ categories, userRole, kbSlug }: SidebarTreeProps) {
   const router = useRouter();
   const tree = buildTree(categories);
 
@@ -230,6 +241,7 @@ export function SidebarTree({ categories, userRole }: SidebarTreeProps) {
           userRole={userRole}
           categories={categories}
           onMutationSuccess={handleMutationSuccess}
+          kbSlug={kbSlug}
         />
       ))}
     </ul>

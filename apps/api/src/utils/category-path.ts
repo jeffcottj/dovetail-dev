@@ -7,7 +7,7 @@ import { db, categories } from '@dovetail/db';
  * then each subsequent child.
  * Returns null if any segment doesn't match.
  */
-export async function resolveCategoryPath(slugSegments: string[]): Promise<string | null> {
+export async function resolveCategoryPath(slugSegments: string[], knowledgeBaseId?: string): Promise<string | null> {
   if (slugSegments.length === 0) return null;
 
   let parentId: string | null = null;
@@ -17,11 +17,16 @@ export async function resolveCategoryPath(slugSegments: string[]): Promise<strin
       ? sql`${categories.parentId} = ${parentId}`
       : sql`${categories.parentId} IS NULL`;
 
+    const kbCondition: SQL = knowledgeBaseId
+      ? sql`AND ${categories.knowledgeBaseId} = ${knowledgeBaseId}`
+      : sql``;
+
     const result: any[] = await db.execute(sql`
       SELECT ${categories.id}
       FROM ${categories}
       WHERE ${categories.slug} = ${slug}
         AND ${parentCondition}
+        ${kbCondition}
       LIMIT 1
     `);
 

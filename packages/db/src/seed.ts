@@ -34,18 +34,31 @@ const DEV_USERS = {
   },
 };
 
+const DEFAULT_KB_ID = '00000000-0000-0000-0000-000000000001';
+
+const DEV_KNOWLEDGE_BASES = {
+  default: {
+    id: DEFAULT_KB_ID,
+    name: 'Default',
+    slug: 'default',
+    description: 'Default knowledge base',
+  },
+};
+
 const DEV_CATEGORIES = {
   housing: {
     id: '10000000-0000-4000-8000-000000000001',
     name: 'Housing',
     slug: 'housing',
     parentId: null,
+    knowledgeBaseId: DEFAULT_KB_ID,
   },
   evictions: {
     id: '10000000-0000-4000-8000-000000000002',
     name: 'Evictions',
     slug: 'evictions',
     parentId: '10000000-0000-4000-8000-000000000001',
+    knowledgeBaseId: DEFAULT_KB_ID,
   },
 };
 
@@ -54,6 +67,7 @@ const DEV_TAGS = {
     id: '20000000-0000-4000-8000-000000000001',
     name: 'Intake',
     slug: 'intake',
+    knowledgeBaseId: DEFAULT_KB_ID,
   },
 };
 
@@ -197,6 +211,7 @@ async function seedEmbeddings() {
 async function runSeed() {
   const { db } = await import('./connection.js');
   const {
+    apiKeyKnowledgeBases,
     apiKeys,
     articleEmbeddings,
     articleTags,
@@ -205,8 +220,10 @@ async function runSeed() {
     attachments,
     categories,
     importJobs,
+    knowledgeBases,
     tags,
     userCategoryRoles,
+    userKbRoles,
     users,
   } = await import('./schema.js');
   const now = new Date();
@@ -218,15 +235,19 @@ async function runSeed() {
     await tx.delete(articleTags);
     await tx.delete(articleVersions);
     await tx.delete(attachments);
+    await tx.delete(apiKeyKnowledgeBases);
     await tx.delete(apiKeys);
     await tx.delete(articles);
     await tx.delete(importJobs);
     await tx.delete(userCategoryRoles);
+    await tx.delete(userKbRoles);
     await tx.delete(tags);
     await tx.delete(categories);
     await tx.delete(users);
+    await tx.delete(knowledgeBases);
 
     await tx.insert(users).values(Object.values(DEV_USERS));
+    await tx.insert(knowledgeBases).values(Object.values(DEV_KNOWLEDGE_BASES));
     await tx.insert(categories).values(Object.values(DEV_CATEGORIES));
     await tx.insert(tags).values(Object.values(DEV_TAGS));
     await tx.insert(articles).values([

@@ -9,16 +9,18 @@ const ROLE_HIERARCHY: Record<Role, number> = {
 };
 
 /**
- * Resolve the effective role for a user in the context of a category.
- * Walks up the category ancestor chain via recursive CTE.
- * Most-specific (deepest) category role wins; falls back to global role.
+ * Resolve the effective role for a user in a given context.
+ * Three-tier cascade: category role → KB role → global role.
+ * Most-specific wins.
  */
 export async function resolveRole(
   userId: string,
   categoryId: string,
+  knowledgeBaseId: string | undefined,
   globalRole: Role,
 ): Promise<Role> {
-  const result = await db.execute(sql`
+  // 1. Check category-level roles (walk ancestor chain)
+  const categoryResult = await db.execute(sql`
     WITH RECURSIVE ancestors AS (
       SELECT id, parent_id, 0 AS depth
       FROM categories
@@ -36,10 +38,24 @@ export async function resolveRole(
     LIMIT 1
   `);
 
-  if (result.length > 0) {
-    return result[0].role as Role;
+  if (categoryResult.length > 0) {
+    return categoryResult[0].role as Role;
   }
 
+  // 2. Check KB-level role (if knowledgeBaseId provided)
+  if (knowledgeBaseId) {
+    const kbResult = await db.execute(sql`
+      SELECT role FROM user_kb_roles
+      WHERE user_id = ${userId} AND knowledge_base_id = ${knowledgeBaseId}
+      LIMIT 1
+    `);
+
+    if (kbResult.length > 0) {
+      return kbResult[0].role as Role;
+    }
+  }
+
+  // 3. Fall back to global role
   return globalRole;
 }
 

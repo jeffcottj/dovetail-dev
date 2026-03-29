@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, eq, sql } from 'drizzle-orm';
-import { db, articles, articleVersions } from '@dovetail/db';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { db, articles, articleVersions, categories } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { validateBody, validateQuery } from '../utils/validate.js';
@@ -13,7 +13,7 @@ import { resolveRole, hasMinimumRole } from '../services/permissions.js';
 import { generateEmbeddings } from '../services/embedding-pipeline.js';
 import type { Role } from '@dovetail/types';
 
-export const articlesRouter: Router = Router();
+export const articlesRouter: Router = Router({ mergeParams: true });
 
 const createArticleSchema = z.object({
   title: z.string().min(1).max(500),
@@ -33,13 +33,20 @@ const listQuerySchema = paginationSchema.extend({
 });
 
 // GET /api/articles — paginated list
-articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (_req, res) => {
+articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (req, res) => {
   const { page, limit, status, categoryId } = res.locals.query as z.infer<typeof listQuerySchema>;
   const offset = (page - 1) * limit;
 
   const conditions: ReturnType<typeof eq>[] = [];
   if (status) conditions.push(eq(articles.status, status));
   if (categoryId) conditions.push(eq(articles.categoryId, categoryId));
+
+  const kbId = req.params.kbId as string | undefined;
+  if (kbId) {
+    conditions.push(
+      inArray(articles.categoryId, sql`(SELECT id FROM categories WHERE knowledge_base_id = ${kbId})`),
+    );
+  }
 
   const whereClause = conditions.length > 0
     ? sql`${sql.join(conditions, sql` AND `)}`
@@ -85,7 +92,8 @@ articlesRouter.get('/by-path/{*path}', authMiddleware, async (req, res) => {
   const categorySegments = segments.slice(0, -1);
   const articleSlug = segments[segments.length - 1];
 
-  const categoryId = await resolveCategoryPath(categorySegments);
+  const kbId = req.params.kbId as string | undefined;
+  const categoryId = await resolveCategoryPath(categorySegments, kbId);
   if (!categoryId) {
     res.status(404).json({ error: 'Category not found' });
     return;
@@ -172,7 +180,13 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
     }
 
     // 2. Per-category RBAC check
-    const effectiveRole = await resolveRole(req.user!.id, current.categoryId, req.user!.role as Role);
+    const [cat] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
+      .from(categories)
+      .where(eq(categories.id, current.categoryId));
+
+    const effectiveRole = await resolveRole(
+      req.user!.id, current.categoryId, cat?.knowledgeBaseId, req.user!.role as Role,
+    );
     if (!hasMinimumRole(effectiveRole, 'editor')) {
       res.status(403).json({ error: 'Forbidden' });
       return;
