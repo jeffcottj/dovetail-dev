@@ -16,6 +16,8 @@ import type { Role } from '@dovetail/types';
 
 export const articlesRouter: Router = Router({ mergeParams: true });
 
+const ARTICLE_UPDATE_NOT_FOUND = 'ARTICLE_UPDATE_NOT_FOUND';
+
 const createArticleSchema = z.object({
   title: z.string().min(1).max(500),
   categoryId: z.string().uuid(),
@@ -185,81 +187,94 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
   const id = req.params.id as string;
 
   let result: any;
-  await db.transaction(async (tx) => {
-    // 1. Fetch current article
-    const [current] = await tx.select().from(articles).where(eq(articles.id, id));
-    if (!current) {
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Fetch current article
+      const [current] = await tx.select().from(articles).where(eq(articles.id, id));
+      if (!current) {
+        res.status(404).json({ error: 'Article not found' });
+        return;
+      }
+
+      // 2. Per-category RBAC check
+      const [cat] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
+        .from(categories)
+        .where(eq(categories.id, current.categoryId));
+
+      const effectiveRole = await resolveRole(
+        req.user!.id, current.categoryId, cat?.knowledgeBaseId, req.user!.role as Role,
+      );
+      if (!hasMinimumRole(effectiveRole, 'editor')) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+
+      // 3. Compute next version number
+      const [maxVersion] = await tx
+        .select({ max: sql<number>`coalesce(max(version_number), 0)` })
+        .from(articleVersions)
+        .where(eq(articleVersions.articleId, id));
+      const nextVersion = (maxVersion?.max ?? 0) + 1;
+
+      // 4. Snapshot current content as a version
+      await tx.insert(articleVersions).values({
+        articleId: id,
+        title: current.title,
+        content: current.content,
+        authorId: req.user!.id,
+        versionNumber: nextVersion,
+      });
+
+      // 5. Apply updates
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (req.body.title !== undefined) {
+        updates.title = req.body.title;
+        updates.slug = toSlug(req.body.title);
+      }
+      if (req.body.content !== undefined) updates.content = req.body.content;
+      if (req.body.categoryId !== undefined) updates.categoryId = req.body.categoryId;
+
+      // Update plain_text for full-text search
+      const newContent = req.body.content ?? current.content;
+      updates.plainText = extractText(newContent);
+
+      let updated;
+      try {
+        [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+      } catch (err: any) {
+        if (err.code === '23505' && err.constraint_name?.includes('slug')) {
+          updates.slug = `${updates.slug}-${Date.now().toString(36)}`;
+          [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+        } else {
+          throw err;
+        }
+      }
+
+      if (!updated) {
+        throw new Error(ARTICLE_UPDATE_NOT_FOUND);
+      }
+
+      result = updated;
+      const [updatedCategory] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
+        .from(categories)
+        .where(eq(categories.id, updated.categoryId));
+
+      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+        kind: 'article.edited',
+        actorId: req.user!.id,
+        knowledgeBaseId: updatedCategory?.knowledgeBaseId,
+        subjectId: updated.id,
+        subjectLabel: updated.title,
+        metadata: { articleId: updated.id },
+      }));
+    });
+  } catch (err: any) {
+    if (err.message === ARTICLE_UPDATE_NOT_FOUND) {
       res.status(404).json({ error: 'Article not found' });
       return;
     }
-
-    // 2. Per-category RBAC check
-    const [cat] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
-      .from(categories)
-      .where(eq(categories.id, current.categoryId));
-
-    const effectiveRole = await resolveRole(
-      req.user!.id, current.categoryId, cat?.knowledgeBaseId, req.user!.role as Role,
-    );
-    if (!hasMinimumRole(effectiveRole, 'editor')) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-
-    // 3. Compute next version number
-    const [maxVersion] = await tx
-      .select({ max: sql<number>`coalesce(max(version_number), 0)` })
-      .from(articleVersions)
-      .where(eq(articleVersions.articleId, id));
-    const nextVersion = (maxVersion?.max ?? 0) + 1;
-
-    // 4. Snapshot current content as a version
-    await tx.insert(articleVersions).values({
-      articleId: id,
-      title: current.title,
-      content: current.content,
-      authorId: req.user!.id,
-      versionNumber: nextVersion,
-    });
-
-    // 5. Apply updates
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (req.body.title !== undefined) {
-      updates.title = req.body.title;
-      updates.slug = toSlug(req.body.title);
-    }
-    if (req.body.content !== undefined) updates.content = req.body.content;
-    if (req.body.categoryId !== undefined) updates.categoryId = req.body.categoryId;
-
-    // Update plain_text for full-text search
-    const newContent = req.body.content ?? current.content;
-    updates.plainText = extractText(newContent);
-
-    let updated;
-    try {
-      [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
-    } catch (err: any) {
-      if (err.code === '23505' && err.constraint_name?.includes('slug')) {
-        updates.slug = `${updates.slug}-${Date.now().toString(36)}`;
-        [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
-      } else {
-        throw err;
-      }
-    }
-    result = updated;
-    const [updatedCategory] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
-      .from(categories)
-      .where(eq(categories.id, updated.categoryId));
-
-    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-      kind: 'article.edited',
-      actorId: req.user!.id,
-      knowledgeBaseId: updatedCategory?.knowledgeBaseId,
-      subjectId: updated.id,
-      subjectLabel: updated.title,
-      metadata: { articleId: updated.id },
-    }));
-  });
+    throw err;
+  }
 
   if (!res.headersSent) {
     void generateEmbeddings(id).catch(err => console.error('Embedding generation failed:', err));

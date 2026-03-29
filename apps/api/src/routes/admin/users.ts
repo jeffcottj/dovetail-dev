@@ -51,6 +51,7 @@ adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBod
   const id = req.params.id as string;
   const { role } = req.body;
   let updated;
+  let outcome: 'updated' | 'not_found' | 'conflict' = 'not_found';
 
   await db.transaction(async (tx) => {
     const [current] = await tx
@@ -59,21 +60,24 @@ adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBod
       .where(eq(users.id, id));
 
     if (!current) {
+      outcome = 'not_found';
       return;
     }
 
     if (current.role === role) {
       updated = current;
+      outcome = 'updated';
       return;
     }
 
     [updated] = await tx
       .update(users)
       .set({ role })
-      .where(eq(users.id, id))
+      .where(and(eq(users.id, id), eq(users.role, current.role)))
       .returning();
 
     if (!updated) {
+      outcome = 'conflict';
       return;
     }
 
@@ -84,10 +88,17 @@ adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBod
       subjectLabel: updated.name,
       metadata: { previousRole: current.role, newRole: updated.role },
     }));
+
+    outcome = 'updated';
   });
 
-  if (!updated) {
+  if (outcome === 'not_found') {
     res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  if (outcome === 'conflict') {
+    res.status(409).json({ error: 'User role changed concurrently' });
     return;
   }
 

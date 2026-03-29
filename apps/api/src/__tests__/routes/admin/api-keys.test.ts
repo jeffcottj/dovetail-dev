@@ -193,7 +193,15 @@ describe('Admin API key routes', () => {
             lastUsedAt: null,
             revokedAt: null,
           }])),
-          update: vi.fn().mockReturnValueOnce(createChain([])),
+          update: vi.fn().mockReturnValueOnce(createChain([{
+            id: KEY_ID,
+            name: 'Test Key',
+            keyHash: 'somehash',
+            createdBy: 'admin-1',
+            createdAt: new Date(),
+            lastUsedAt: null,
+            revokedAt: new Date(),
+          }])),
           insert: vi.fn().mockReturnValueOnce(activityInsert),
         };
         return fn(tx);
@@ -210,6 +218,37 @@ describe('Admin API key routes', () => {
         subjectId: KEY_ID,
         subjectLabel: 'Test Key',
       }));
+    });
+
+    it('returns 409 without activity when revoke loses a race', async () => {
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{
+            id: KEY_ID,
+            name: 'Test Key',
+            keyHash: 'somehash',
+            createdBy: 'admin-1',
+            createdAt: new Date(),
+            lastUsedAt: null,
+            revokedAt: null,
+          }])),
+          update: vi.fn().mockReturnValueOnce(createChain([])),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete(`/api/admin/api-keys/${KEY_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
     });
   });
 });

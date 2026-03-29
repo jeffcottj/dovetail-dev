@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { adminActivityEvents, db, apiKeys, apiKeyKnowledgeBases } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -88,7 +88,15 @@ apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: A
       return { outcome: 'already_revoked' as const };
     }
 
-    await tx.update(apiKeys).set({ revokedAt: new Date() }).where(eq(apiKeys.id, id));
+    const [revoked] = await tx
+      .update(apiKeys)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(apiKeys.id, id), isNull(apiKeys.revokedAt)))
+      .returning();
+
+    if (!revoked) {
+      return { outcome: 'already_revoked' as const };
+    }
 
     await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
       kind: 'api_key.revoked',

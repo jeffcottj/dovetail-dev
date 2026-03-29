@@ -144,6 +144,31 @@ describe('Admin user routes', () => {
       expect(res.status).toBe(404);
     });
 
+    it('returns 409 without activity when the role update loses a race', async () => {
+      const current = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() };
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValue(createChain([current])),
+          update: vi.fn().mockReturnValue(createChain([])),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch('/api/admin/users/u1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ role: 'editor' });
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
+    });
+
     it('returns 400 for invalid role', async () => {
       const res = await supertest(app)
         .patch('/api/admin/users/u1')
