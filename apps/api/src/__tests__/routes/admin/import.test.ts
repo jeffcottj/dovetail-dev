@@ -18,10 +18,20 @@ vi.mock('@dovetail/db', async (importOriginal) => {
   };
 });
 
+vi.mock('../../../services/import/import-engine.js', () => ({
+  ImportEngine: class {
+    onProgress() {}
+    async run() {}
+  },
+}));
+
 import { app } from '../../../app.js';
-import { db } from '@dovetail/db';
+import { adminActivityEvents, db } from '@dovetail/db';
+import { tempSessions } from '../../../routes/admin/import.js';
 
 const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
+const TEMP_ID = '00000000-0000-4000-8000-000000000301';
+const JOB_ID = '00000000-0000-4000-8000-000000000302';
 
 describe('Import admin routes', () => {
   let adminToken: string;
@@ -29,6 +39,7 @@ describe('Import admin routes', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    tempSessions.clear();
     adminToken = await makeToken({ sub: 'admin-1', role: 'admin' });
     editorToken = await makeToken({ sub: 'editor-1', role: 'editor' });
   });
@@ -72,6 +83,39 @@ describe('Import admin routes', () => {
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
         .send({ options: { defaultStatus: 'draft' } });
       expect(res.status).toBe(400);
+    });
+
+    it('records import.started when an import job is started', async () => {
+      tempSessions.set(TEMP_ID, { dir: '/tmp/import-session', createdAt: Date.now() });
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.insert as Mock).mockReturnValueOnce(createChain([{
+        id: JOB_ID,
+        createdBy: 'admin-1',
+        knowledgeBaseId: 'kb-1',
+        options: { defaultStatus: 'draft' },
+      }]));
+      const activityInsert = createChain([{ id: 'evt-import-started' }]);
+      (db.insert as Mock).mockReturnValueOnce(activityInsert);
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases/kb-1/admin/import/execute')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ tempId: TEMP_ID, options: { defaultStatus: 'draft' } });
+
+      expect(res.status).toBe(202);
+      expect(res.body.jobId).toBe(JOB_ID);
+      expect(db.insert).toHaveBeenCalledWith(adminActivityEvents);
+      expect(activityInsert.values).toHaveBeenCalledWith({
+        kind: 'import.started',
+        actorId: 'admin-1',
+        knowledgeBaseId: 'kb-1',
+        subjectId: JOB_ID,
+        subjectLabel: 'Import job started',
+        metadata: {
+          jobId: JOB_ID,
+          defaultStatus: 'draft',
+        },
+      });
     });
   });
 });

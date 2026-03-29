@@ -6,9 +6,10 @@ import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { eq, desc } from 'drizzle-orm';
-import { db, importJobs } from '@dovetail/db';
+import { adminActivityEvents, db, importJobs } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 import { validateBody } from '../../utils/validate.js';
 import { getUploadsDir, ensureDir, cleanupDir } from '../../utils/storage.js';
 import { parseDataJson, buildCategoryTree } from '../../services/import/flowlu-parser.js';
@@ -145,6 +146,18 @@ importRouter.post(
       knowledgeBaseId: kbId,
       options,
     }).returning();
+
+    await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'import.started',
+      actorId: req.user!.id,
+      knowledgeBaseId: kbId,
+      subjectId: job.id,
+      subjectLabel: 'Import job started',
+      metadata: {
+        jobId: job.id,
+        defaultStatus: options.defaultStatus,
+      },
+    }));
 
     // Start import in background
     const engine = new ImportEngine({

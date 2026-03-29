@@ -7,6 +7,7 @@ export type AdminActivityKind =
   | 'user.role_changed'
   | 'kb.created'
   | 'kb.deleted'
+  | 'import.started'
   | 'api_key.created'
   | 'api_key.revoked'
   | 'article.created'
