@@ -1,14 +1,17 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClientFetch } from '../../../../lib/api-client';
 import { useToast } from '../../../../lib/hooks/useToast';
+import { runAdminMutation } from '../../../../lib/admin/mutation';
 import { Button } from '../../../../components/ui/Button';
 import { Card } from '../../../../components/ui/Card';
 import { Modal } from '../../../../components/ui/Modal';
 import type { KnowledgeBase } from '@dovetail/types';
 
 export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
+  const router = useRouter();
   const [kbs, setKbs] = useState(initialKbs);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
@@ -18,31 +21,39 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
 
   async function handleCreate() {
     setLoading(true);
-    try {
-      const created = await apiClientFetch<KnowledgeBase>('/api/knowledge-bases', {
-        method: 'POST',
-        body: JSON.stringify({ name, description: description || undefined }),
-      });
-      setKbs([...kbs, created]);
-      setShowCreate(false);
-      setName('');
-      setDescription('');
-      success('Knowledge base created');
-    } catch (err: any) {
-      error(err.message);
-    } finally {
-      setLoading(false);
-    }
+    await runAdminMutation({
+      execute: () =>
+        apiClientFetch<KnowledgeBase>('/api/knowledge-bases', {
+          method: 'POST',
+          body: JSON.stringify({ name, description: description || undefined }),
+        }),
+      onSuccess: async (created) => {
+        setKbs([...kbs, created]);
+        setShowCreate(false);
+        setName('');
+        setDescription('');
+        success('Knowledge base created');
+      },
+      onError: (err) => {
+        error(err instanceof Error ? err.message : 'Failed to create knowledge base');
+      },
+      refresh: router.refresh,
+    });
+    setLoading(false);
   }
 
   async function handleDelete(id: string) {
-    try {
-      await apiClientFetch(`/api/knowledge-bases/${id}`, { method: 'DELETE' });
+    await runAdminMutation({
+      execute: () => apiClientFetch(`/api/knowledge-bases/${id}`, { method: 'DELETE' }),
+      onSuccess: async () => {
       setKbs(kbs.filter(kb => kb.id !== id));
       success('Knowledge base deleted');
-    } catch (err: any) {
-      error(err.message);
-    }
+      },
+      onError: (err) => {
+        error(err instanceof Error ? err.message : 'Failed to delete knowledge base');
+      },
+      refresh: router.refresh,
+    });
   }
 
   return (
