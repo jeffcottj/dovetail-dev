@@ -143,6 +143,7 @@ describe('Article routes', () => {
         const createArticleInsert = createChain([mockArticle]);
         activityInsert = createChain([{ id: 'evt-article-create' }]);
         const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-from-category' }])),
           insert: vi.fn()
             .mockReturnValueOnce(createArticleInsert)
             .mockReturnValueOnce(activityInsert),
@@ -160,7 +161,7 @@ describe('Article routes', () => {
       expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
         kind: 'article.created',
         actorId: USER_ID,
-        knowledgeBaseId: 'kb-1',
+        knowledgeBaseId: 'kb-from-category',
         subjectId: ART_ID,
         subjectLabel: 'Test Article',
         metadata: { articleId: ART_ID },
@@ -171,6 +172,7 @@ describe('Article routes', () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
         const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-from-category' }])),
           insert: vi.fn()
             .mockReturnValueOnce(createChain([mockArticle]))
             .mockReturnValueOnce(createChain([{ id: 'evt-article-create' }])),

@@ -133,59 +133,44 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
 
   const plainText = extractText(content);
 
+  const createDraftArticle = async (articleSlug: string) => db.transaction(async (tx) => {
+    const [category] = await tx
+      .select({ knowledgeBaseId: categories.knowledgeBaseId })
+      .from(categories)
+      .where(eq(categories.id, categoryId));
+
+    const [created] = await tx.insert(articles).values({
+      title,
+      slug: articleSlug,
+      categoryId,
+      authorId: req.user!.id,
+      content,
+      plainText,
+      status: 'draft',
+    }).returning();
+    if (!created) {
+      throw new Error('Article creation failed');
+    }
+    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'article.created',
+      actorId: req.user!.id,
+      knowledgeBaseId: category?.knowledgeBaseId,
+      subjectId: created.id,
+      subjectLabel: created.title,
+      metadata: { articleId: created.id },
+    }));
+    return created;
+  });
+
   try {
-    const created = await db.transaction(async (tx) => {
-      const [created] = await tx.insert(articles).values({
-        title,
-        slug,
-        categoryId,
-        authorId: req.user!.id,
-        content,
-        plainText,
-        status: 'draft',
-      }).returning();
-      if (!created) {
-        throw new Error('Article creation failed');
-      }
-      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-        kind: 'article.created',
-        actorId: req.user!.id,
-        knowledgeBaseId: req.params.kbId as string | undefined,
-        subjectId: created.id,
-        subjectLabel: created.title,
-        metadata: { articleId: created.id },
-      }));
-      return created;
-    });
+    const created = await createDraftArticle(slug);
     void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
     const categoryPath = await buildCategoryPath(created.categoryId);
     res.status(201).json({ ...created, categoryPath });
   } catch (err: any) {
     if (err.code === '23505' && err.constraint_name?.includes('slug')) {
       const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
-      const created = await db.transaction(async (tx) => {
-        const [created] = await tx.insert(articles).values({
-          title,
-          slug: uniqueSlug,
-          categoryId,
-          authorId: req.user!.id,
-          content,
-          plainText,
-          status: 'draft',
-        }).returning();
-        if (!created) {
-          throw new Error('Article creation failed');
-        }
-        await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-          kind: 'article.created',
-          actorId: req.user!.id,
-          knowledgeBaseId: req.params.kbId as string | undefined,
-          subjectId: created.id,
-          subjectLabel: created.title,
-          metadata: { articleId: created.id },
-        }));
-        return created;
-      });
+      const created = await createDraftArticle(uniqueSlug);
       void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
       const categoryPath = await buildCategoryPath(created.categoryId);
       res.status(201).json({ ...created, categoryPath });

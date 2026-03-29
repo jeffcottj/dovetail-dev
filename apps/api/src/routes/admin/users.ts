@@ -53,6 +53,20 @@ adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBod
   let updated;
 
   await db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(users)
+      .where(eq(users.id, id));
+
+    if (!current) {
+      return;
+    }
+
+    if (current.role === role) {
+      updated = current;
+      return;
+    }
+
     [updated] = await tx
       .update(users)
       .set({ role })
@@ -68,7 +82,7 @@ adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBod
       actorId: req.user!.id,
       subjectId: updated.id,
       subjectLabel: updated.name,
-      metadata: { role: updated.role },
+      metadata: { previousRole: current.role, newRole: updated.role },
     }));
   });
 

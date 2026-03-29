@@ -69,12 +69,14 @@ describe('Admin user routes', () => {
       expect(res.status).toBe(403);
     });
 
-    it('updates user role', async () => {
-      const updated = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'editor', provider: 'google', createdAt: new Date() };
+    it('updates user role and records previous/new role metadata', async () => {
+      const current = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() };
+      const updated = { ...current, role: 'editor' as const };
       let activityInsert: ReturnType<typeof createChain>;
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
         activityInsert = createChain([{ id: 'evt-1' }]);
         const tx = {
+          select: vi.fn().mockReturnValue(createChain([current])),
           update: vi.fn().mockReturnValue(createChain([updated])),
           insert: vi.fn().mockReturnValueOnce(activityInsert),
         };
@@ -93,14 +95,42 @@ describe('Admin user routes', () => {
         actorId: 'admin-1',
         subjectId: updated.id,
         subjectLabel: updated.name,
-        metadata: { role: updated.role },
+        metadata: { previousRole: current.role, newRole: updated.role },
       }));
+    });
+
+    it('returns the existing user without activity when role is unchanged', async () => {
+      const current = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'editor', provider: 'google', createdAt: new Date() };
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValue(createChain([current])),
+          update: vi.fn(),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch('/api/admin/users/u1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ role: 'editor' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe('editor');
+      expect(tx!.update).not.toHaveBeenCalled();
+      expect(tx!.insert).not.toHaveBeenCalled();
     });
 
     it('returns 404 when user not found', async () => {
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
         const tx = {
-          update: vi.fn().mockReturnValue(createChain([])),
+          select: vi.fn().mockReturnValue(createChain([])),
+          update: vi.fn(),
           insert: vi.fn(),
         };
         return fn(tx);
