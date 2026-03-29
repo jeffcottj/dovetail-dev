@@ -15,18 +15,18 @@ const createKeySchema = z.object({
   knowledgeBaseIds: z.array(z.string().uuid()).min(1),
 });
 
-function buildRevokedActivityRows(
+function buildRevokedActivityRow(
   actorId: string,
   key: { id: string; name: string },
-  knowledgeBaseIds: string[],
+  knowledgeBaseId: string,
 ) {
-  return knowledgeBaseIds.map((knowledgeBaseId) => buildAdminActivityInsert({
+  return buildAdminActivityInsert({
     kind: 'api_key.revoked',
     actorId,
     knowledgeBaseId,
     subjectId: key.id,
     subjectLabel: key.name,
-  }));
+  });
 }
 
 // POST /api/admin/api-keys — create a new API key (returns raw key once)
@@ -120,36 +120,16 @@ apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: A
       .from(apiKeyKnowledgeBases)
       .where(eq(apiKeyKnowledgeBases.apiKeyId, id));
 
-    const associatedKnowledgeBaseIds = associatedKnowledgeBases.map(({ knowledgeBaseId }) => knowledgeBaseId);
-    const activityRows = buildRevokedActivityRows(req.user!.id, key, associatedKnowledgeBaseIds);
-
-    if (activityRows.length > 0) {
+    for (const { knowledgeBaseId } of associatedKnowledgeBases) {
       try {
-        await tx.insert(adminActivityEvents).values(activityRows);
+        await tx.insert(adminActivityEvents).values([
+          buildRevokedActivityRow(req.user!.id, key, knowledgeBaseId),
+        ]);
       } catch (err: any) {
-        if (err?.code !== '23503') {
-          throw err;
+        if (err?.code === '23503') {
+          continue;
         }
-
-        const survivingKnowledgeBases = await tx
-          .select({ knowledgeBaseId: apiKeyKnowledgeBases.knowledgeBaseId })
-          .from(apiKeyKnowledgeBases)
-          .where(eq(apiKeyKnowledgeBases.apiKeyId, id));
-        const survivingActivityRows = buildRevokedActivityRows(
-          req.user!.id,
-          key,
-          survivingKnowledgeBases.map(({ knowledgeBaseId }) => knowledgeBaseId),
-        );
-
-        if (survivingActivityRows.length > 0) {
-          try {
-            await tx.insert(adminActivityEvents).values(survivingActivityRows);
-          } catch (retryErr: any) {
-            if (retryErr?.code !== '23503') {
-              throw retryErr;
-            }
-          }
-        }
+        throw err;
       }
     }
 

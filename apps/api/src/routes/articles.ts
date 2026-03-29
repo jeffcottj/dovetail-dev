@@ -24,6 +24,20 @@ function isCategoryReferenceConflict(err: any) {
   return err?.code === '23503';
 }
 
+function buildArticleCurrentStatePredicate(current: {
+  id: string;
+  title: string;
+  categoryId: string;
+  content: unknown;
+}) {
+  return and(
+    eq(articles.id, current.id),
+    eq(articles.categoryId, current.categoryId),
+    eq(articles.title, current.title),
+    eq(articles.content, current.content as Record<string, unknown>),
+  );
+}
+
 const createArticleSchema = z.object({
   title: z.string().min(1).max(500),
   categoryId: z.string().uuid(),
@@ -356,11 +370,7 @@ articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), 
       try {
         [updated] = await tx.update(articles)
           .set(updates)
-          .where(and(
-            eq(articles.id, id),
-            eq(articles.categoryId, current.categoryId),
-            eq(articles.updatedAt, current.updatedAt),
-          ))
+          .where(buildArticleCurrentStatePredicate(current))
           .returning();
       } catch (err: any) {
         if (isCategoryReferenceConflict(err) && req.body.categoryId !== undefined && req.body.categoryId !== current.categoryId) {
@@ -372,11 +382,7 @@ articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), 
           try {
             [updated] = await tx.update(articles)
               .set(updates)
-              .where(and(
-                eq(articles.id, id),
-                eq(articles.categoryId, current.categoryId),
-                eq(articles.updatedAt, current.updatedAt),
-              ))
+              .where(buildArticleCurrentStatePredicate(current))
               .returning();
           } catch (retryErr: any) {
             if (isCategoryReferenceConflict(retryErr) && req.body.categoryId !== undefined && req.body.categoryId !== current.categoryId) {
