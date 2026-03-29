@@ -217,9 +217,7 @@ describe('Knowledge Base routes', () => {
         insert: ReturnType<typeof vi.fn>;
         delete: ReturnType<typeof vi.fn>;
       };
-      let importJobsDeleteChain: ReturnType<typeof createChain>;
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
-        importJobsDeleteChain = createChain(undefined);
         tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockKb]))
@@ -227,7 +225,7 @@ describe('Knowledge Base routes', () => {
             .mockReturnValueOnce(createChain([{ count: 0 }]))
             .mockReturnValueOnce(createChain([{ count: 1 }])),
           insert: vi.fn(),
-          delete: vi.fn().mockReturnValueOnce(importJobsDeleteChain),
+          delete: vi.fn(),
         };
         return fn(tx);
       });
@@ -238,8 +236,7 @@ describe('Knowledge Base routes', () => {
 
       expect(res.status).toBe(409);
       expect(tx!.insert).not.toHaveBeenCalled();
-      expect(tx!.delete).toHaveBeenCalledTimes(1);
-      expect(importJobsDeleteChain!.where).toHaveBeenCalled();
+      expect(tx!.delete).not.toHaveBeenCalled();
     });
 
     it('deletes KB when only completed or failed import history exists and cleans up history', async () => {

@@ -148,11 +148,6 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
         return;
       }
 
-      await tx.delete(importJobs).where(and(
-        eq(importJobs.knowledgeBaseId, id),
-        inArray(importJobs.status, ['completed', 'failed']),
-      ));
-
       const [activeImportJobCount] = await tx
         .select({ count: sql<number>`count(*)` })
         .from(importJobs)
@@ -165,6 +160,11 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
         hasDependents = true;
         return;
       }
+
+      await tx.delete(importJobs).where(and(
+        eq(importJobs.knowledgeBaseId, id),
+        inArray(importJobs.status, ['completed', 'failed']),
+      ));
 
       await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
         kind: 'kb.deleted',

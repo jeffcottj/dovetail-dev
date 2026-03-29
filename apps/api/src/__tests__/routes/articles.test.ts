@@ -126,13 +126,50 @@ describe('Article routes', () => {
   });
 
   describe('POST /api/knowledge-bases/kb-1/articles', () => {
-    it('returns 403 for viewer', async () => {
+    it('allows a globally viewer user with effective editor access', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock).mockResolvedValueOnce([{ role: 'editor' }]);
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const createArticleInsert = createChain([{
+          ...mockArticle,
+          authorId: 'user-1',
+        }]);
+        activityInsert = createChain([{ id: 'evt-article-create' }]);
+        const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn()
+            .mockReturnValueOnce(createArticleInsert)
+            .mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/articles')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
         .send({ title: 'Test', categoryId: CAT_ID, content: {} });
+
+      expect(res.status).toBe(201);
+      expect(res.body.authorId).toBe('user-1');
+    });
+
+    it('returns 403 when effective editor access is missing', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock).mockResolvedValueOnce([{ role: 'viewer' }]);
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases/kb-1/articles')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
+        .send({ title: 'Test', categoryId: CAT_ID, content: {} });
+
       expect(res.status).toBe(403);
     });
 

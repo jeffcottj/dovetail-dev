@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { adminActivityEvents, db, articles, articleVersions, categories } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
-import { requireRole } from '../middleware/requireRole.js';
 import { buildAdminActivityInsert } from '../services/admin-activity.js';
 import { validateBody, validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
@@ -164,7 +163,7 @@ articlesRouter.get('/:id', authMiddleware, async (req, res) => {
 });
 
 // POST /api/articles — create draft
-articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(createArticleSchema), async (req: AuthRequest, res) => {
+articlesRouter.post('/', authMiddleware, validateBody(createArticleSchema), async (req: AuthRequest, res) => {
   const { title, categoryId, content } = req.body;
   const slug = toSlug(title);
   const kbId = req.params.kbId as string | undefined;
@@ -269,7 +268,7 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
 });
 
 // PATCH /api/articles/:id — update (creates version)
-articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody(updateArticleSchema), async (req: AuthRequest, res) => {
+articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const kbId = req.params.kbId as string | undefined;
 
@@ -443,7 +442,7 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
 });
 
 // DELETE /api/articles/:id — archive (soft delete)
-articlesRouter.delete('/:id', authMiddleware, requireRole('editor'), async (req: AuthRequest, res) => {
+articlesRouter.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const article = await loadScopedEditorArticle(req, res, id);
   if (!article) {
@@ -464,7 +463,7 @@ articlesRouter.delete('/:id', authMiddleware, requireRole('editor'), async (req:
 });
 
 // POST /api/articles/:id/publish
-articlesRouter.post('/:id/publish', authMiddleware, requireRole('editor'), async (req: AuthRequest, res) => {
+articlesRouter.post('/:id/publish', authMiddleware, async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const article = await loadScopedEditorArticle(req, res, id);
   if (!article) {
