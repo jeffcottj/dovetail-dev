@@ -53,8 +53,9 @@ async function run() {
     headers: { Cookie: cookie },
   });
   const homeHtml = await expectOk(homeResponse, 'Home page');
-  assert(homeHtml.includes('Welcome to Dovetail'), 'Home page did not render the signed-in dashboard');
-  assert(homeHtml.includes('Notice Requirements for Evictions'), 'Home page is missing seeded published content');
+  assert(homeHtml.includes('Knowledge Bases'), 'Home page did not render the signed-in knowledge base index');
+  assert(homeHtml.includes('Signed in as'), 'Home page did not render the signed-in user banner');
+  assert(homeHtml.includes('Housing knowledge base'), 'Home page is missing the seeded housing knowledge base');
 
   const authHeaders = { Cookie: cookie };
 
@@ -63,30 +64,32 @@ async function run() {
   assert(me.id === '00000000-0000-4000-8000-000000000001', 'Unexpected seeded admin user');
   assert(me.role === 'admin', 'Seeded admin session did not carry admin role');
 
-  logStep('Checking categories endpoint');
-  const categories = await fetchJson(`${apiUrl}/api/categories`, { headers: authHeaders }, 'API /api/categories');
-  assert(Array.isArray(categories) && categories.length >= 2, 'Seeded categories were not returned');
+  logStep('Checking knowledge base index');
+  const knowledgeBases = await fetchJson(`${apiUrl}/api/knowledge-bases`, { headers: authHeaders }, 'API /api/knowledge-bases');
+  assert(Array.isArray(knowledgeBases) && knowledgeBases.length >= 1, 'Seeded knowledge bases were not returned');
+  const housingKb = knowledgeBases.find((kb) => kb.slug === 'housing');
+  assert(housingKb, 'Seeded housing knowledge base was not returned');
 
   logStep('Checking published articles endpoint');
   const articles = await fetchJson(
-    `${apiUrl}/api/articles?status=published&limit=10`,
+    `${apiUrl}/api/knowledge-bases/${housingKb.id}/articles?status=published&limit=10`,
     { headers: authHeaders },
-    'API /api/articles',
+    'API /api/knowledge-bases/:kbId/articles',
   );
   assert(articles.total >= 1, 'Seeded published article was not returned');
 
   logStep('Checking full-text search');
   const search = await fetchJson(
-    `${apiUrl}/api/search?q=notice&mode=fulltext`,
+    `${apiUrl}/api/knowledge-bases/${housingKb.id}/search?q=notice&mode=fulltext`,
     { headers: authHeaders },
-    'API /api/search',
+    'API /api/knowledge-bases/:kbId/search',
   );
   assert(search.total >= 1, 'Full-text search did not return the seeded article');
 
   logStep('Checking admin dashboard');
   const adminResponse = await fetch(`${webUrl}/admin`, { headers: authHeaders });
   const adminHtml = await expectOk(adminResponse, 'Admin dashboard');
-  assert(adminHtml.includes('Admin Dashboard'), 'Admin dashboard did not load for seeded admin');
+  assert(adminHtml.includes('Admin Overview'), 'Admin dashboard did not load for seeded admin');
 
   if (smokeAi) {
     logStep('Checking semantic search');

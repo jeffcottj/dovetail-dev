@@ -27,7 +27,7 @@ export default async function KbUsersPage({ params }: { params: Promise<{ kbSlug
   const overview = await fetchKbAdminOverview(kb.id);
   const overviewWarning = getKbAdminOverviewWarning(overview);
   const kbContext = overview.ok ? overview.kb : kb;
-  const usersResult = await fetchAdminResource<PaginatedResponse<User>>('/api/admin/users?limit=200');
+  const usersResult = await fetchAdminResource<PaginatedResponse<User>>('/api/admin/users?limit=100');
 
   return (
     <AdminWorkspaceLayout

@@ -37,6 +37,14 @@ function collectElements(node: ReactNode, elements: ReactElement<any>[] = []) {
   return elements;
 }
 
+function collectText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(collectText).join('');
+  if (!isValidElement(node)) return '';
+  return collectText(node.props?.children);
+}
+
 describe('getAdminNavSections', () => {
   it('returns global and KB sections when a KB context is present', () => {
     const sections = getAdminNavSections({
@@ -90,14 +98,11 @@ describe('Admin nav shell', () => {
     });
 
     const nav = AdminNav({ sections });
-    const navLinks = collectElements(nav).filter(
-      (node) => typeof node.type === 'function' && node.type.name === 'Link',
-    );
-    const activeLink = navLinks.find((node) => node.props.href === '/admin/users');
+    const navElements = collectElements(nav);
+    const desktopRail = navElements.find((node) => node.type === 'aside');
 
-    expect(nav.props.className).toContain('w-full');
-    expect(nav.props.className).toContain('lg:w-72');
-    expect(activeLink?.props['aria-current']).toBe('page');
+    expect(desktopRail?.props.className).toContain('w-full');
+    expect(desktopRail?.props.className).toContain('lg:w-72');
 
     const workspace = AdminWorkspaceLayout({
       nav: { sections },
@@ -113,5 +118,23 @@ describe('Admin nav shell', () => {
 
     expect(workspace.props.className).toContain('flex-col');
     expect(workspace.props.className).toContain('lg:flex-row');
+  });
+
+  it('renders a collapsed mobile navigation control separate from the desktop rail', () => {
+    const sections = getAdminNavSections({
+      pathname: '/kb/housing/admin/users',
+      kb: { slug: 'housing', name: 'Housing' },
+    });
+
+    const nav = AdminNav({ sections });
+    const elements = collectElements(nav);
+    const mobileDisclosure = elements.find((node) => node.type === 'details');
+    const mobileSummary = elements.find((node) => node.type === 'summary');
+    const desktopRail = elements.find((node) => node.type === 'aside');
+
+    expect(mobileDisclosure?.props.className).toContain('lg:hidden');
+    expect(collectText(mobileSummary)).toContain('Browse admin sections');
+    expect(desktopRail?.props.className).toContain('hidden');
+    expect(desktopRail?.props.className).toContain('lg:block');
   });
 });

@@ -36,12 +36,12 @@ const DEV_USERS = {
 
 const DEFAULT_KB_ID = '00000000-0000-0000-0000-000000000001';
 
-const DEV_KNOWLEDGE_BASES = {
+export const DEV_KNOWLEDGE_BASES = {
   default: {
     id: DEFAULT_KB_ID,
-    name: 'Default',
-    slug: 'default',
-    description: 'Default knowledge base',
+    name: 'Housing',
+    slug: 'housing',
+    description: 'Housing knowledge base',
   },
 };
 
