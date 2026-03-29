@@ -8,7 +8,7 @@ import {
   fetchGlobalAdminOverview,
   getGlobalAdminOverviewWarning,
 } from '../../../../lib/admin/workspace';
-import { apiFetch } from '../../../../lib/api';
+import { fetchAdminResource } from '../../../../lib/admin/resource';
 import { UserList } from '../../../(main)/admin/users/UserList';
 
 interface PaginatedUsers {
@@ -35,13 +35,7 @@ export default async function AdminUsersPage() {
   const overview = await fetchGlobalAdminOverview();
   const overviewWarning = getGlobalAdminOverviewWarning(overview);
 
-  let users: PaginatedUsers = { data: [], total: 0, page: 1, limit: 20 };
-  let error: string | null = null;
-  try {
-    users = await apiFetch<PaginatedUsers>('/api/admin/users?limit=100');
-  } catch (err) {
-    error = err instanceof Error ? err.message : 'Failed to load users';
-  }
+  const usersResult = await fetchAdminResource<PaginatedUsers>('/api/admin/users?limit=100');
 
   return (
     <AdminWorkspaceLayout
@@ -54,6 +48,7 @@ export default async function AdminUsersPage() {
       metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
       actions={buildGlobalAdminActions()}
       activity={overview.ok ? overview.activity : []}
+      activityUnavailableMessage={overviewWarning}
     >
       <section className="space-y-4">
         <Card className="!bg-[color:var(--color-admin-panel)]">
@@ -73,16 +68,19 @@ export default async function AdminUsersPage() {
             <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
           </Card>
         ) : null}
-        {error ? (
-          <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger font-[family-name:var(--font-ui)]">
-            {error}
-          </div>
+        {!usersResult.ok ? (
+          <Card className="border-danger/30 bg-danger/10">
+            <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-danger">
+              Users unavailable
+            </p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-danger">{usersResult.error}</p>
+          </Card>
         ) : (
           <p className="text-sm text-ink-muted font-[family-name:var(--font-ui)]">
-            {users.total} user{users.total !== 1 ? 's' : ''} total
+            {usersResult.data.total} user{usersResult.data.total !== 1 ? 's' : ''} total
           </p>
         )}
-        <UserList users={users.data} />
+        {usersResult.ok ? <UserList users={usersResult.data.data} /> : null}
       </section>
     </AdminWorkspaceLayout>
   );

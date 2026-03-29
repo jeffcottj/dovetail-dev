@@ -8,7 +8,7 @@ import {
   fetchGlobalAdminOverview,
   getGlobalAdminOverviewWarning,
 } from '../../../../lib/admin/workspace';
-import { apiFetch } from '../../../../lib/api';
+import { fetchAdminResource } from '../../../../lib/admin/resource';
 import type { KnowledgeBase } from '@dovetail/types';
 import { KbManager } from '../../../(main)/admin/knowledge-bases/KbManager';
 
@@ -21,12 +21,7 @@ export default async function KnowledgeBasesAdminPage() {
   const overview = await fetchGlobalAdminOverview();
   const overviewWarning = getGlobalAdminOverviewWarning(overview);
 
-  let knowledgeBases: KnowledgeBase[] = [];
-  try {
-    knowledgeBases = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-  } catch {
-    // API unavailable
-  }
+  const knowledgeBasesResult = await fetchAdminResource<KnowledgeBase[]>('/api/knowledge-bases');
 
   return (
     <AdminWorkspaceLayout
@@ -39,6 +34,7 @@ export default async function KnowledgeBasesAdminPage() {
       metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
       actions={buildGlobalAdminActions()}
       activity={overview.ok ? overview.activity : []}
+      activityUnavailableMessage={overviewWarning}
     >
       <section className="space-y-4">
         <Card className="!bg-[color:var(--color-admin-panel)]">
@@ -58,7 +54,16 @@ export default async function KnowledgeBasesAdminPage() {
             <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
           </Card>
         ) : null}
-        <KbManager initialKbs={knowledgeBases} />
+        {!knowledgeBasesResult.ok ? (
+          <Card className="border-danger/30 bg-danger/10">
+            <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-danger">
+              Knowledge bases unavailable
+            </p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-danger">{knowledgeBasesResult.error}</p>
+          </Card>
+        ) : (
+          <KbManager initialKbs={knowledgeBasesResult.data} />
+        )}
       </section>
     </AdminWorkspaceLayout>
   );

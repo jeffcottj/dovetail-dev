@@ -15,6 +15,7 @@ export interface AdminWorkspaceLayoutProps {
   metrics: AdminMetricItem[];
   actions: AdminQuickActionItem[];
   activity: AdminActivityItem[];
+  activityUnavailableMessage?: string | null;
   children: ReactNode;
 }
 
@@ -24,6 +25,7 @@ export function AdminWorkspaceLayout({
   metrics,
   actions,
   activity,
+  activityUnavailableMessage,
   children,
 }: AdminWorkspaceLayoutProps) {
   return (
@@ -35,7 +37,7 @@ export function AdminWorkspaceLayout({
           <AdminMetricStrip items={metrics} />
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
             <AdminQuickActions items={actions} />
-            <AdminActivityFeed items={activity} />
+            <AdminActivityFeed items={activity} unavailableMessage={activityUnavailableMessage} />
           </div>
           {children}
         </div>

@@ -158,3 +158,29 @@ adminUsersRouter.delete('/:id/category-roles/:categoryId', authMiddleware, requi
 
   res.status(204).end();
 });
+
+// GET /api/admin/users/:id — fetch one user
+adminUsersRouter.get('/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+  const id = req.params.id as string;
+
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      role: users.role,
+      provider: users.provider,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  res.json(user);
+});

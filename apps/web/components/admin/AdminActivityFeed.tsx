@@ -4,6 +4,7 @@ import { formatAdminActivityLine } from '../../lib/admin/format';
 
 interface AdminActivityFeedProps {
   items: AdminActivityItem[];
+  unavailableMessage?: string | null;
 }
 
 function formatActivityTime(createdAt: string) {
@@ -15,7 +16,7 @@ function formatActivityTime(createdAt: string) {
   }).format(new Date(createdAt));
 }
 
-export function AdminActivityFeed({ items }: AdminActivityFeedProps) {
+export function AdminActivityFeed({ items, unavailableMessage }: AdminActivityFeedProps) {
   return (
     <section aria-labelledby="admin-activity-feed">
       <Card className="!bg-[color:var(--color-admin-panel)]">
@@ -27,7 +28,9 @@ export function AdminActivityFeed({ items }: AdminActivityFeedProps) {
         </h2>
 
         <div className="mt-4 space-y-4">
-          {items.length > 0 ? (
+          {unavailableMessage ? (
+            <p className="text-sm text-ink-light">{unavailableMessage}</p>
+          ) : items.length > 0 ? (
             items.map((item) => (
               <article key={item.id} className="rounded-lg border border-border-light bg-[color:var(--color-admin-bg)] px-4 py-3">
                 <p className="text-sm font-medium text-ink">{formatAdminActivityLine(item)}</p>

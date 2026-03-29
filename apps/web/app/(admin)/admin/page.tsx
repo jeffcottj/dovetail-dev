@@ -30,6 +30,7 @@ export default async function AdminPage() {
       metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
       actions={buildGlobalAdminActions()}
       activity={overview.ok ? overview.activity : []}
+      activityUnavailableMessage={overviewWarning}
     >
       {overview.ok ? (
         <Card className="!bg-[color:var(--color-admin-panel)]">

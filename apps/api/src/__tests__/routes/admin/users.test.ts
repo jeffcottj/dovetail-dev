@@ -60,6 +60,36 @@ describe('Admin user routes', () => {
     });
   });
 
+  describe('GET /api/admin/users/:id', () => {
+    it('returns a user by id for admins', async () => {
+      const user = {
+        id: 'u2',
+        email: 'bob@example.com',
+        name: 'Bob',
+        avatarUrl: null,
+        role: 'editor',
+        provider: 'google',
+        createdAt: new Date(),
+      };
+
+      (db.select as Mock).mockReturnValueOnce(createChain([user]));
+
+      const res = await supertest(app)
+        .get('/api/admin/users/u2')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        id: 'u2',
+        email: 'bob@example.com',
+        name: 'Bob',
+        avatarUrl: null,
+        role: 'editor',
+        provider: 'google',
+      });
+    });
+  });
+
   describe('PATCH /api/admin/users/:id', () => {
     it('returns 403 for non-admin', async () => {
       const res = await supertest(app)

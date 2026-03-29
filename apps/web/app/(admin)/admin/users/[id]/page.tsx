@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { auth } from '../../../../../auth';
 import { redirect } from 'next/navigation';
@@ -10,7 +11,7 @@ import {
   fetchGlobalAdminOverview,
   getGlobalAdminOverviewWarning,
 } from '../../../../../lib/admin/workspace';
-import { apiFetch } from '../../../../../lib/api';
+import { fetchAdminResource } from '../../../../../lib/admin/resource';
 import { CategoryRoleManager } from '../../../../(main)/admin/users/[id]/CategoryRoleManager';
 import type { UserCategoryRole } from '@dovetail/types';
 
@@ -24,13 +25,6 @@ interface UserData {
   createdAt: string;
 }
 
-interface PaginatedUsers {
-  data: UserData[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
 export default async function AdminUserDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if ((session?.user as any)?.role !== 'admin') {
@@ -41,42 +35,111 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
   const overviewWarning = getGlobalAdminOverviewWarning(overview);
   const { id } = await params;
 
-  let user: UserData | null = null;
-  try {
-    const result = await apiFetch<PaginatedUsers>('/api/admin/users?limit=100');
-    user = result.data.find((candidate) => candidate.id === id) ?? null;
-  } catch {
-    // API unavailable
-  }
-
-  if (!user) {
+  const userResult = await fetchAdminResource<UserData>(`/api/admin/users/${id}`);
+  if (!userResult.ok && userResult.kind === 'not_found') {
     redirect('/admin/users');
   }
 
   let categoryRoles: UserCategoryRole[] = [];
-  try {
-    const result = await apiFetch<{ categoryRoles: UserCategoryRole[] }>(
+  let categoryRolesError: string | null = null;
+  if (userResult.ok) {
+    const result = await fetchAdminResource<{ categoryRoles: UserCategoryRole[] }>(
       `/api/admin/users/${id}/category-roles`,
     );
-    categoryRoles = result.categoryRoles;
-  } catch {
-    // API unavailable
+    if (result.ok) {
+      categoryRoles = result.data.categoryRoles;
+    } else {
+      categoryRolesError = result.error;
+    }
   }
 
-  const roleBadgeVariant =
-    user.role === 'admin' ? 'archived' : user.role === 'editor' ? 'info' : 'draft';
+  let userDetailsSection: ReactNode;
+  let categoryRolesSection: ReactNode = null;
+
+  if (userResult.ok) {
+    const currentUser = userResult.data;
+    const roleBadgeVariant =
+      currentUser.role === 'admin' ? 'archived' : currentUser.role === 'editor' ? 'info' : 'draft';
+
+    userDetailsSection = (
+      <Card className="!bg-[color:var(--color-admin-panel)]">
+        <div className="flex items-start gap-4">
+          {currentUser.avatarUrl ? (
+            <img
+              src={currentUser.avatarUrl}
+              alt={currentUser.name}
+              className="h-16 w-16 rounded-full border border-border-light"
+            />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border-light bg-parchment-warm text-xl font-[family-name:var(--font-display)] text-ink-muted">
+              {currentUser.name?.charAt(0)?.toUpperCase() ?? '?'}
+            </div>
+          )}
+          <div>
+            <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-ink-muted">
+              Account Details
+            </p>
+            <h2 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight text-ink">
+              {currentUser.name}
+            </h2>
+            <p className="mt-1 text-sm text-ink-light">{currentUser.email}</p>
+            <div className="mt-3 flex items-center gap-2">
+              <Badge variant={roleBadgeVariant}>{currentUser.role}</Badge>
+              <span className="text-xs capitalize text-ink-muted font-[family-name:var(--font-ui)]">
+                via {currentUser.provider}
+              </span>
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+
+    categoryRolesSection = (
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink">
+            Category Role Overrides
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-ink-light font-[family-name:var(--font-ui)]">
+            Override this user&apos;s global role for specific categories. The most specific role
+            wins when accessing content in a category.
+          </p>
+        </div>
+        {categoryRolesError ? (
+          <Card className="border-danger/30 bg-danger/10">
+            <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-danger">
+              Category roles unavailable
+            </p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-danger">{categoryRolesError}</p>
+          </Card>
+        ) : (
+          <CategoryRoleManager userId={id} initialCategoryRoles={categoryRoles} />
+        )}
+      </section>
+    );
+  } else {
+    userDetailsSection = (
+      <Card className="border-danger/30 bg-danger/10">
+        <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-danger">
+          User unavailable
+        </p>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-danger">{userResult.error}</p>
+      </Card>
+    );
+  }
 
   return (
     <AdminWorkspaceLayout
       nav={{ sections: getAdminNavSections({ pathname: '/admin/users' }) }}
       header={{
-        title: user.name,
+        title: userResult.ok ? userResult.data.name : 'User unavailable',
         description: 'Review global access and category-level overrides for this user.',
         scopeLabel: 'Global Admin',
       }}
       metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
       actions={buildGlobalAdminActions()}
       activity={overview.ok ? overview.activity : []}
+      activityUnavailableMessage={overviewWarning}
     >
       <section className="space-y-6">
         <Link href="/admin/users" className="text-sm text-accent hover:underline font-[family-name:var(--font-ui)]">
@@ -91,50 +154,8 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
             <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
           </Card>
         ) : null}
-
-        <Card className="!bg-[color:var(--color-admin-panel)]">
-          <div className="flex items-start gap-4">
-            {user.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={user.name}
-                className="h-16 w-16 rounded-full border border-border-light"
-              />
-            ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border-light bg-parchment-warm text-xl font-[family-name:var(--font-display)] text-ink-muted">
-                {user.name?.charAt(0)?.toUpperCase() ?? '?'}
-              </div>
-            )}
-            <div>
-              <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-ink-muted">
-                Account Details
-              </p>
-              <h2 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight text-ink">
-                {user.name}
-              </h2>
-              <p className="mt-1 text-sm text-ink-light">{user.email}</p>
-              <div className="mt-3 flex items-center gap-2">
-                <Badge variant={roleBadgeVariant}>{user.role}</Badge>
-                <span className="text-xs capitalize text-ink-muted font-[family-name:var(--font-ui)]">
-                  via {user.provider}
-                </span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <section className="space-y-4">
-          <div>
-            <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold text-ink">
-              Category Role Overrides
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-ink-light font-[family-name:var(--font-ui)]">
-              Override this user&apos;s global role for specific categories. The most specific role
-              wins when accessing content in a category.
-            </p>
-          </div>
-          <CategoryRoleManager userId={id} initialCategoryRoles={categoryRoles} />
-        </section>
+        {userDetailsSection}
+        {categoryRolesSection}
       </section>
     </AdminWorkspaceLayout>
   );
