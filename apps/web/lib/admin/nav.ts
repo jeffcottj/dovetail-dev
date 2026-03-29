@@ -39,6 +39,26 @@ export function buildGlobalAdminActions(): AdminQuickActionItem[] {
   ];
 }
 
+export function buildKbAdminActions(input: { slug: string }): AdminQuickActionItem[] {
+  return [
+    {
+      label: 'Manage KB Users',
+      href: `/kb/${input.slug}/admin/users`,
+      description: 'Review KB-specific role overrides and adjust local access.',
+    },
+    {
+      label: 'Manage Tags',
+      href: `/kb/${input.slug}/admin/tags`,
+      description: 'Create and retire tags used to organize this knowledge base.',
+    },
+    {
+      label: 'Import Content',
+      href: `/kb/${input.slug}/admin/import`,
+      description: 'Preview uploads and run imports for this knowledge base.',
+    },
+  ];
+}
+
 export function getAdminNavSections(input: AdminNavInput): AdminNavSection[] {
   const pathname = input.pathname.replace(/\/+$/, '') || '/';
   const isExact = (href: string) => pathname === href;

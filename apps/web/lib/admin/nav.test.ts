@@ -3,7 +3,7 @@ import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AdminNav } from '../../components/admin/AdminNav';
 import { AdminWorkspaceLayout } from '../../components/admin/AdminWorkspaceLayout';
-import { buildGlobalAdminActions, getAdminNavSections } from './nav';
+import { buildGlobalAdminActions, buildKbAdminActions, getAdminNavSections } from './nav';
 
 // Vitest executes this route module with a classic JSX transform, so the page
 // expects a global React binding at runtime.
@@ -69,6 +69,17 @@ describe('buildGlobalAdminActions', () => {
       expect.objectContaining({ label: 'Manage Users', href: '/admin/users' }),
       expect.objectContaining({ label: 'Create API Key', href: '/admin/api-keys' }),
     ]);
+  });
+});
+
+describe('buildKbAdminActions', () => {
+  it('returns KB-scoped admin quick actions', () => {
+    expect(buildKbAdminActions({ slug: 'housing' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ href: '/kb/housing/admin/users' }),
+        expect.objectContaining({ href: '/kb/housing/admin/import' }),
+      ]),
+    );
   });
 });
 
