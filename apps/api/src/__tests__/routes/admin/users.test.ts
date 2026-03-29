@@ -71,9 +71,15 @@ describe('Admin user routes', () => {
 
     it('updates user role', async () => {
       const updated = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'editor', provider: 'google', createdAt: new Date() };
-      (db.update as Mock).mockReturnValue(createChain([updated]));
-      const activityInsert = createChain([{ id: 'evt-1' }]);
-      (db.insert as Mock).mockReturnValueOnce(activityInsert);
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-1' }]);
+        const tx = {
+          update: vi.fn().mockReturnValue(createChain([updated])),
+          insert: vi.fn().mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .patch('/api/admin/users/u1')
@@ -82,8 +88,7 @@ describe('Admin user routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.role).toBe('editor');
-      expect(db.insert).toHaveBeenCalledWith(adminActivityEvents);
-      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
         kind: 'user.role_changed',
         actorId: 'admin-1',
         subjectId: updated.id,
@@ -93,7 +98,13 @@ describe('Admin user routes', () => {
     });
 
     it('returns 404 when user not found', async () => {
-      (db.update as Mock).mockReturnValue(createChain([]));
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          update: vi.fn().mockReturnValue(createChain([])),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .patch('/api/admin/users/nonexistent')

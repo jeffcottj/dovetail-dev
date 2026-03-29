@@ -134,39 +134,20 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
   const plainText = extractText(content);
 
   try {
-    const [created] = await db.insert(articles).values({
-      title,
-      slug,
-      categoryId,
-      authorId: req.user!.id,
-      content,
-      plainText,
-      status: 'draft',
-    }).returning();
-    await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
-      kind: 'article.created',
-      actorId: req.user!.id,
-      knowledgeBaseId: req.params.kbId as string | undefined,
-      subjectId: created.id,
-      subjectLabel: created.title,
-      metadata: { articleId: created.id },
-    }));
-    void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
-    const categoryPath = await buildCategoryPath(created.categoryId);
-    res.status(201).json({ ...created, categoryPath });
-  } catch (err: any) {
-    if (err.code === '23505' && err.constraint_name?.includes('slug')) {
-      const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
-      const [created] = await db.insert(articles).values({
+    const created = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(articles).values({
         title,
-        slug: uniqueSlug,
+        slug,
         categoryId,
         authorId: req.user!.id,
         content,
         plainText,
         status: 'draft',
       }).returning();
-      await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      if (!created) {
+        throw new Error('Article creation failed');
+      }
+      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
         kind: 'article.created',
         actorId: req.user!.id,
         knowledgeBaseId: req.params.kbId as string | undefined,
@@ -174,6 +155,37 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
         subjectLabel: created.title,
         metadata: { articleId: created.id },
       }));
+      return created;
+    });
+    void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
+    const categoryPath = await buildCategoryPath(created.categoryId);
+    res.status(201).json({ ...created, categoryPath });
+  } catch (err: any) {
+    if (err.code === '23505' && err.constraint_name?.includes('slug')) {
+      const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
+      const created = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(articles).values({
+          title,
+          slug: uniqueSlug,
+          categoryId,
+          authorId: req.user!.id,
+          content,
+          plainText,
+          status: 'draft',
+        }).returning();
+        if (!created) {
+          throw new Error('Article creation failed');
+        }
+        await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+          kind: 'article.created',
+          actorId: req.user!.id,
+          knowledgeBaseId: req.params.kbId as string | undefined,
+          subjectId: created.id,
+          subjectLabel: created.title,
+          metadata: { articleId: created.id },
+        }));
+        return created;
+      });
       void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
       const categoryPath = await buildCategoryPath(created.categoryId);
       res.status(201).json({ ...created, categoryPath });
@@ -250,11 +262,14 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
       }
     }
     result = updated;
+    const [updatedCategory] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
+      .from(categories)
+      .where(eq(categories.id, updated.categoryId));
 
     await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
       kind: 'article.edited',
       actorId: req.user!.id,
-      knowledgeBaseId: cat?.knowledgeBaseId,
+      knowledgeBaseId: updatedCategory?.knowledgeBaseId,
       subjectId: updated.id,
       subjectLabel: updated.title,
       metadata: { articleId: updated.id },

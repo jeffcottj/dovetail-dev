@@ -20,24 +20,29 @@ apiKeysRouter.post('/', authMiddleware, requireRole('admin'), validateBody(creat
   const { name, knowledgeBaseIds } = req.body;
   const rawKey = randomBytes(32).toString('base64url');
   const keyHash = createHash('sha256').update(rawKey).digest('hex');
+  const created = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(apiKeys).values({
+      name,
+      keyHash,
+      createdBy: req.user!.id,
+    }).returning();
+    if (!created) {
+      throw new Error('API key creation failed');
+    }
 
-  const [created] = await db.insert(apiKeys).values({
-    name,
-    keyHash,
-    createdBy: req.user!.id,
-  }).returning();
+    await tx.insert(apiKeyKnowledgeBases).values(
+      knowledgeBaseIds.map((kbId: string) => ({ apiKeyId: created.id, knowledgeBaseId: kbId })),
+    );
 
-  // Insert KB associations
-  await db.insert(apiKeyKnowledgeBases).values(
-    knowledgeBaseIds.map((kbId: string) => ({ apiKeyId: created.id, knowledgeBaseId: kbId })),
-  );
+    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'api_key.created',
+      actorId: req.user!.id,
+      subjectId: created.id,
+      subjectLabel: created.name,
+    }));
 
-  await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
-    kind: 'api_key.created',
-    actorId: req.user!.id,
-    subjectId: created.id,
-    subjectLabel: created.name,
-  }));
+    return created;
+  });
 
   res.status(201).json({
     id: created.id,
@@ -73,26 +78,37 @@ apiKeysRouter.get('/', authMiddleware, requireRole('admin'), async (_req, res) =
 // DELETE /api/admin/api-keys/:id — revoke an API key
 apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
+  const result = await db.transaction(async (tx) => {
+    const [key] = await tx.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+    if (!key) {
+      return { outcome: 'not_found' as const };
+    }
 
-  const [key] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
-  if (!key) {
+    if (key.revokedAt) {
+      return { outcome: 'already_revoked' as const };
+    }
+
+    await tx.update(apiKeys).set({ revokedAt: new Date() }).where(eq(apiKeys.id, id));
+
+    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'api_key.revoked',
+      actorId: req.user!.id,
+      subjectId: key.id,
+      subjectLabel: key.name,
+    }));
+
+    return { outcome: 'revoked' as const };
+  });
+
+  if (result.outcome === 'not_found') {
     res.status(404).json({ error: 'API key not found' });
     return;
   }
 
-  if (key.revokedAt) {
+  if (result.outcome === 'already_revoked') {
     res.status(409).json({ error: 'API key already revoked' });
     return;
   }
-
-  await db.update(apiKeys).set({ revokedAt: new Date() }).where(eq(apiKeys.id, id));
-
-  await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
-    kind: 'api_key.revoked',
-    actorId: req.user!.id,
-    subjectId: key.id,
-    subjectLabel: key.name,
-  }));
 
   res.status(200).json({ message: 'API key revoked' });
 });

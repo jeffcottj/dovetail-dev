@@ -88,14 +88,22 @@ describe('Import admin routes', () => {
     it('records import.started when an import job is started', async () => {
       tempSessions.set(TEMP_ID, { dir: '/tmp/import-session', createdAt: Date.now() });
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.insert as Mock).mockReturnValueOnce(createChain([{
-        id: JOB_ID,
-        createdBy: 'admin-1',
-        knowledgeBaseId: 'kb-1',
-        options: { defaultStatus: 'draft' },
-      }]));
-      const activityInsert = createChain([{ id: 'evt-import-started' }]);
-      (db.insert as Mock).mockReturnValueOnce(activityInsert);
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const createJobInsert = createChain([{
+          id: JOB_ID,
+          createdBy: 'admin-1',
+          knowledgeBaseId: 'kb-1',
+          options: { defaultStatus: 'draft' },
+        }]);
+        activityInsert = createChain([{ id: 'evt-import-started' }]);
+        const tx = {
+          insert: vi.fn()
+            .mockReturnValueOnce(createJobInsert)
+            .mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/admin/import/execute')
@@ -104,8 +112,7 @@ describe('Import admin routes', () => {
 
       expect(res.status).toBe(202);
       expect(res.body.jobId).toBe(JOB_ID);
-      expect(db.insert).toHaveBeenCalledWith(adminActivityEvents);
-      expect(activityInsert.values).toHaveBeenCalledWith({
+      expect(activityInsert!.values).toHaveBeenCalledWith({
         kind: 'import.started',
         actorId: 'admin-1',
         knowledgeBaseId: 'kb-1',

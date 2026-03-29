@@ -67,9 +67,17 @@ describe('Knowledge Base routes', () => {
 
     it('creates a KB for admin', async () => {
       const created = { id: 'kb-new', name: 'Housing Law', slug: 'housing-law', description: null, createdAt: new Date() };
-      const activityInsert = createChain([{ id: 'evt-kb-create' }]);
-      (db.insert as Mock).mockReturnValueOnce(createChain([created]));
-      (db.insert as Mock).mockReturnValueOnce(activityInsert);
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const createKbInsert = createChain([created]);
+        activityInsert = createChain([{ id: 'evt-kb-create' }]);
+        const tx = {
+          insert: vi.fn()
+            .mockReturnValueOnce(createKbInsert)
+            .mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .post('/api/knowledge-bases')
@@ -78,8 +86,7 @@ describe('Knowledge Base routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.slug).toBe('housing-law');
-      expect((db.insert as Mock).mock.calls[1]?.[0]).toBe(adminActivityEvents);
-      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
         kind: 'kb.created',
         actorId: 'user-3',
         knowledgeBaseId: created.id,
@@ -136,9 +143,16 @@ describe('Knowledge Base routes', () => {
     });
 
     it('returns 409 when KB has categories', async () => {
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(createChain([{ count: 1 }]));
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 1 }])),
+          insert: vi.fn(),
+          delete: vi.fn(),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .delete('/api/knowledge-bases/kb-1')
@@ -147,25 +161,33 @@ describe('Knowledge Base routes', () => {
     });
 
     it('deletes KB when empty', async () => {
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(createChain([{ count: 0 }]));
-      (db.delete as Mock).mockReturnValue(createChain(undefined));
-      const activityInsert = createChain([{ id: 'evt-kb-delete' }]);
-      (db.insert as Mock).mockReturnValueOnce(activityInsert);
+      let activityInsert: ReturnType<typeof createChain>;
+      let deleteChain: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-kb-delete' }]);
+        deleteChain = createChain(undefined);
+        const tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }])),
+          insert: vi.fn().mockReturnValueOnce(activityInsert),
+          delete: vi.fn().mockReturnValueOnce(deleteChain),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .delete('/api/knowledge-bases/kb-1')
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(204);
-      expect(db.insert).toHaveBeenCalledWith(adminActivityEvents);
-      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
         kind: 'kb.deleted',
         actorId: 'user-3',
         knowledgeBaseId: 'kb-1',
         subjectId: 'kb-1',
         subjectLabel: 'Default',
       }));
+      expect(deleteChain!.where).toHaveBeenCalled();
     });
   });
 

@@ -138,9 +138,17 @@ describe('Article routes', () => {
 
     it('creates a draft article for editor', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.insert as Mock).mockReturnValueOnce(createChain([mockArticle]));
-      const activityInsert = createChain([{ id: 'evt-article-create' }]);
-      (db.insert as Mock).mockReturnValueOnce(activityInsert);
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const createArticleInsert = createChain([mockArticle]);
+        activityInsert = createChain([{ id: 'evt-article-create' }]);
+        const tx = {
+          insert: vi.fn()
+            .mockReturnValueOnce(createArticleInsert)
+            .mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/articles')
@@ -149,8 +157,7 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.title).toBe('Test Article');
-      expect((db.insert as Mock).mock.calls[1]?.[0]).toBe(adminActivityEvents);
-      expect(activityInsert.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
         kind: 'article.created',
         actorId: USER_ID,
         knowledgeBaseId: 'kb-1',
@@ -162,7 +169,14 @@ describe('Article routes', () => {
 
     it('includes categoryPath in the response', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.insert as Mock).mockReturnValue(createChain([mockArticle]));
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          insert: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ id: 'evt-article-create' }])),
+        };
+        return fn(tx);
+      });
       (buildCategoryPath as Mock).mockResolvedValueOnce(['housing', 'rental']);
 
       const res = await supertest(app)
@@ -188,7 +202,8 @@ describe('Article routes', () => {
 
   describe('PATCH /api/knowledge-bases/kb-1/articles/:id', () => {
     it('updates article and creates version', async () => {
-      const updated = { ...mockArticle, title: 'Updated Title' };
+      const nextCategoryId = '00000000-0000-4000-8000-000000000002';
+      const updated = { ...mockArticle, title: 'Updated Title', categoryId: nextCategoryId };
       let activityInsert: ReturnType<typeof createChain>;
 
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
@@ -200,7 +215,8 @@ describe('Article routes', () => {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockArticle]))  // fetch current article
             .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))  // get category KB
-            .mockReturnValueOnce(createChain([{ max: 0 }])),   // max version
+            .mockReturnValueOnce(createChain([{ max: 0 }]))   // max version
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }])), // get updated category KB
           insert: vi.fn()
             .mockReturnValueOnce(versionInsert)
             .mockReturnValueOnce(activityInsert), // insert version, then activity event
@@ -215,14 +231,14 @@ describe('Article routes', () => {
       const res = await supertest(app)
         .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
-        .send({ title: 'Updated Title' });
+        .send({ title: 'Updated Title', categoryId: nextCategoryId });
 
       expect(res.status).toBe(200);
       expect(res.body.title).toBe('Updated Title');
       expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
         kind: 'article.edited',
         actorId: USER_ID,
-        knowledgeBaseId: 'kb-1',
+        knowledgeBaseId: 'kb-2',
         subjectId: ART_ID,
         subjectLabel: 'Updated Title',
         metadata: { articleId: ART_ID },

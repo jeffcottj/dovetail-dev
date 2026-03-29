@@ -37,26 +37,38 @@ knowledgeBasesRouter.post(
     const { name, description } = req.body;
     const slug = toSlug(name);
     try {
-      const [created] = await db.insert(knowledgeBases).values({ name, slug, description: description ?? null }).returning();
-      await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
-        kind: 'kb.created',
-        actorId: req.user!.id,
-        knowledgeBaseId: created.id,
-        subjectId: created.id,
-        subjectLabel: created.name,
-      }));
-      res.status(201).json(created);
-    } catch (err: any) {
-      if (err.code === '23505' && err.constraint_name?.includes('slug')) {
-        const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
-        const [created] = await db.insert(knowledgeBases).values({ name, slug: uniqueSlug, description: description ?? null }).returning();
-        await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      const created = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(knowledgeBases).values({ name, slug, description: description ?? null }).returning();
+        if (!created) {
+          throw new Error('Knowledge base creation failed');
+        }
+        await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
           kind: 'kb.created',
           actorId: req.user!.id,
           knowledgeBaseId: created.id,
           subjectId: created.id,
           subjectLabel: created.name,
         }));
+        return created;
+      });
+      res.status(201).json(created);
+    } catch (err: any) {
+      if (err.code === '23505' && err.constraint_name?.includes('slug')) {
+        const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
+        const created = await db.transaction(async (tx) => {
+          const [created] = await tx.insert(knowledgeBases).values({ name, slug: uniqueSlug, description: description ?? null }).returning();
+          if (!created) {
+            throw new Error('Knowledge base creation failed');
+          }
+          await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+            kind: 'kb.created',
+            actorId: req.user!.id,
+            knowledgeBaseId: created.id,
+            subjectId: created.id,
+            subjectLabel: created.name,
+          }));
+          return created;
+        });
         res.status(201).json(created);
       } else {
         throw err;
@@ -104,28 +116,36 @@ knowledgeBasesRouter.patch(
 // DELETE /api/knowledge-bases/:id — delete KB (global admin only, fails if has categories)
 knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
-  const [kb] = await db.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
+  let hasCategories = false;
 
-  const [catCount] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(categories)
-    .where(eq(categories.knowledgeBaseId, id));
+  await db.transaction(async (tx) => {
+    const [kb] = await tx.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
+    const [catCount] = await tx
+      .select({ count: sql<number>`count(*)` })
+      .from(categories)
+      .where(eq(categories.knowledgeBaseId, id));
 
-  if (Number(catCount.count) > 0) {
+    hasCategories = Number(catCount.count) > 0;
+    if (hasCategories) {
+      return;
+    }
+
+    if (kb) {
+      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+        kind: 'kb.deleted',
+        actorId: req.user!.id,
+        knowledgeBaseId: id,
+        subjectId: id,
+        subjectLabel: kb.name,
+      }));
+    }
+
+    await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
+  });
+
+  if (hasCategories) {
     res.status(409).json({ error: 'Cannot delete knowledge base with categories. Remove all categories first.' });
     return;
-  }
-
-  await db.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
-
-  if (kb) {
-    await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
-      kind: 'kb.deleted',
-      actorId: req.user!.id,
-      knowledgeBaseId: id,
-      subjectId: id,
-      subjectLabel: kb.name,
-    }));
   }
 
   res.status(204).end();

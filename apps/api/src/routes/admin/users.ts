@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, sql } from 'drizzle-orm';
 import { adminActivityEvents, db, users, userCategoryRoles, categories } from '@dovetail/db';
-import { authMiddleware } from '../../middleware/auth.js';
+import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 import { validateBody, validateQuery } from '../../utils/validate.js';
@@ -47,28 +47,35 @@ adminUsersRouter.get('/', authMiddleware, requireRole('admin'), validateQuery(pa
 });
 
 // PATCH /api/admin/users/:id — update global role
-adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBody(updateRoleSchema), async (req, res) => {
+adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBody(updateRoleSchema), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const { role } = req.body;
+  let updated;
 
-  const [updated] = await db
-    .update(users)
-    .set({ role })
-    .where(eq(users.id, id))
-    .returning();
+  await db.transaction(async (tx) => {
+    [updated] = await tx
+      .update(users)
+      .set({ role })
+      .where(eq(users.id, id))
+      .returning();
+
+    if (!updated) {
+      return;
+    }
+
+    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'user.role_changed',
+      actorId: req.user!.id,
+      subjectId: updated.id,
+      subjectLabel: updated.name,
+      metadata: { role: updated.role },
+    }));
+  });
 
   if (!updated) {
     res.status(404).json({ error: 'User not found' });
     return;
   }
-
-  await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
-    kind: 'user.role_changed',
-    actorId: req.user!.id,
-    subjectId: updated.id,
-    subjectLabel: updated.name,
-    metadata: { role: updated.role },
-  }));
 
   res.json(updated);
 });

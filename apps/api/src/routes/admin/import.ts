@@ -141,23 +141,30 @@ importRouter.post(
 
     // Create import job record
     const kbId = req.params.kbId as string;
-    const [job] = await db.insert(importJobs).values({
-      createdBy: req.user!.id,
-      knowledgeBaseId: kbId,
-      options,
-    }).returning();
+    const job = await db.transaction(async (tx) => {
+      const [job] = await tx.insert(importJobs).values({
+        createdBy: req.user!.id,
+        knowledgeBaseId: kbId,
+        options,
+      }).returning();
+      if (!job) {
+        throw new Error('Import job creation failed');
+      }
 
-    await db.insert(adminActivityEvents).values(buildAdminActivityInsert({
-      kind: 'import.started',
-      actorId: req.user!.id,
-      knowledgeBaseId: kbId,
-      subjectId: job.id,
-      subjectLabel: 'Import job started',
-      metadata: {
-        jobId: job.id,
-        defaultStatus: options.defaultStatus,
-      },
-    }));
+      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+        kind: 'import.started',
+        actorId: req.user!.id,
+        knowledgeBaseId: kbId,
+        subjectId: job.id,
+        subjectLabel: 'Import job started',
+        metadata: {
+          jobId: job.id,
+          defaultStatus: options.defaultStatus,
+        },
+      }));
+
+      return job;
+    });
 
     // Start import in background
     const engine = new ImportEngine({
