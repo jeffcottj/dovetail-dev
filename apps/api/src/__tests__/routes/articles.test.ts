@@ -295,6 +295,36 @@ describe('Article routes', () => {
       expect(res.status).toBe(404);
     });
 
+    it('returns 404 when the current article belongs to another knowledge base', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }])),
+          insert: vi.fn(),
+          update: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Updated Title' });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.update).not.toHaveBeenCalled();
+      expect(db.execute).not.toHaveBeenCalled();
+    });
+
     it('returns 404 when the article disappears before the update returns', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
 

@@ -246,6 +246,11 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
         .from(categories)
         .where(eq(categories.id, current.categoryId));
 
+      if (kbId && cat?.knowledgeBaseId !== kbId) {
+        res.status(404).json({ error: 'Article not found' });
+        return;
+      }
+
       const effectiveRole = await resolveRole(
         req.user!.id, current.categoryId, cat?.knowledgeBaseId, req.user!.role as Role,
       );
