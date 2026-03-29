@@ -42,6 +42,24 @@ describe('Knowledge base admin overview routes', () => {
   });
 
   describe('GET /api/knowledge-bases/:kbId/admin/overview', () => {
+    it('returns 401 before KB resolution when unauthenticated', async () => {
+      const res = await supertest(app)
+        .get('/api/knowledge-bases/missing-kb/admin/overview');
+
+      expect(res.status).toBe(401);
+      expect(db.select).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for an authenticated admin when the KB does not exist', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([]));
+
+      const res = await supertest(app)
+        .get('/api/knowledge-bases/missing-kb/admin/overview')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(404);
+    });
+
     it('returns 403 for a non-admin without a KB admin role', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.execute as Mock).mockResolvedValueOnce([]);
@@ -54,12 +72,16 @@ describe('Knowledge base admin overview routes', () => {
     });
 
     it('returns KB-scoped metrics and KB-scoped activity for a global admin', async () => {
+      let articleActivityCountChain: ReturnType<typeof createChain>;
       (db.select as Mock)
         .mockReturnValueOnce(createChain([mockKb]))
         .mockReturnValueOnce(createChain([{ count: 5 }]))
         .mockReturnValueOnce(createChain([{ count: 9 }]))
         .mockReturnValueOnce(createChain([{ count: 2 }]))
-        .mockReturnValueOnce(createChain([{ count: 14 }]));
+        .mockImplementationOnce(() => {
+          articleActivityCountChain = createChain([{ count: 14 }]);
+          return articleActivityCountChain;
+        });
       (db.execute as Mock).mockResolvedValueOnce([
         {
           id: 'evt-2',
@@ -92,6 +114,7 @@ describe('Knowledge base admin overview routes', () => {
         imports: { total: 2 },
         articleActivity: { recent: 14 },
       });
+      expect(articleActivityCountChain!.where).toHaveBeenCalledTimes(1);
       expect(res.body.activity[0]).toMatchObject({
         kind: 'article.created',
         knowledgeBase: {

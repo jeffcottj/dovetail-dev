@@ -63,7 +63,7 @@ import { bulkPublishRouter } from './routes/admin/bulk-publish.js';
 app.use('/api/knowledge-bases/:kbId/admin/articles/bulk-publish', resolveKb, bulkPublishRouter);
 
 import { kbOverviewRouter } from './routes/admin/kb-overview.js';
-app.use('/api/knowledge-bases/:kbId/admin/overview', resolveKb, kbOverviewRouter);
+app.use('/api/knowledge-bases/:kbId/admin/overview', authMiddleware, resolveKb, kbOverviewRouter);
 
 import { knowledgeBasesRouter } from './routes/knowledge-bases.js';
 app.use('/api/knowledge-bases', knowledgeBasesRouter);

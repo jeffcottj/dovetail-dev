@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { and, eq, sql } from 'drizzle-orm';
 import { adminActivityEvents, db, importJobs, tags, userKbRoles } from '@dovetail/db';
-import { authMiddleware } from '../../middleware/auth.js';
 import { requireKbAdmin, type AuthKbRequest } from '../../middleware/resolveKb.js';
 import { normalizeAdminActivityRow, type AdminActivityRow } from '../../services/admin-activity.js';
 
 export const kbOverviewRouter: Router = Router({ mergeParams: true });
+const ARTICLE_ACTIVITY_RECENT_WINDOW_DAYS = 30;
 
-kbOverviewRouter.get('/', authMiddleware, requireKbAdmin, async (req: AuthKbRequest, res) => {
+kbOverviewRouter.get('/', requireKbAdmin, async (req: AuthKbRequest, res) => {
   const kbId = req.params.kbId as string;
 
   const [{ count: usersTotal }] = await db
@@ -28,6 +28,8 @@ kbOverviewRouter.get('/', authMiddleware, requireKbAdmin, async (req: AuthKbRequ
     .where(and(
       eq(adminActivityEvents.knowledgeBaseId, kbId),
       sql`${adminActivityEvents.kind} LIKE 'article.%'`,
+      // Keep `recent` explicit and stable for the admin shell.
+      sql`${adminActivityEvents.createdAt} >= now() - interval '${sql.raw(String(ARTICLE_ACTIVITY_RECENT_WINDOW_DAYS))} days'`,
     ));
 
   const activityRows = await db.execute(sql`
