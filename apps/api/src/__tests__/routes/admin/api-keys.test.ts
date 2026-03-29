@@ -87,12 +87,58 @@ describe('Admin API key routes', () => {
       expect(typeof res.body.key).toBe('string');
       expect(res.body.key.length).toBeGreaterThan(0);
       expect(res.body.knowledgeBaseIds).toEqual(['00000000-0000-4000-8000-000000000001']);
-      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
-        kind: 'api_key.created',
-        actorId: 'admin-1',
-        subjectId: KEY_ID,
-        subjectLabel: 'Test Key',
-      }));
+      expect(activityInsert!.values).toHaveBeenCalledWith([
+        buildAdminActivityInsert({
+          kind: 'api_key.created',
+          actorId: 'admin-1',
+          knowledgeBaseId: '00000000-0000-4000-8000-000000000001',
+          subjectId: KEY_ID,
+          subjectLabel: 'Test Key',
+        }),
+      ]);
+    });
+
+    it('records one api_key.created activity row per associated knowledge base', async () => {
+      const created = {
+        id: KEY_ID,
+        name: 'Test Key',
+        keyHash: 'somehash',
+        createdBy: 'admin-1',
+        createdAt: new Date().toISOString(),
+        lastUsedAt: null,
+        revokedAt: null,
+      };
+      const knowledgeBaseIds = [
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002',
+      ];
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-1' }, { id: 'evt-2' }]);
+        const tx = {
+          insert: vi.fn()
+            .mockReturnValueOnce(createChain([created]))
+            .mockReturnValueOnce(createChain([]))
+            .mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .post('/api/admin/api-keys')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ name: 'Test Key', knowledgeBaseIds });
+
+      expect(res.status).toBe(201);
+      expect(activityInsert!.values).toHaveBeenCalledWith(
+        knowledgeBaseIds.map((knowledgeBaseId) => buildAdminActivityInsert({
+          kind: 'api_key.created',
+          actorId: 'admin-1',
+          knowledgeBaseId,
+          subjectId: KEY_ID,
+          subjectLabel: 'Test Key',
+        })),
+      );
     });
   });
 
@@ -192,7 +238,9 @@ describe('Admin API key routes', () => {
             createdAt: new Date(),
             lastUsedAt: null,
             revokedAt: null,
-          }])),
+          }])).mockReturnValueOnce(createChain([
+            { knowledgeBaseId: '00000000-0000-4000-8000-000000000001' },
+          ])),
           update: vi.fn().mockReturnValueOnce(createChain([{
             id: KEY_ID,
             name: 'Test Key',
@@ -212,12 +260,65 @@ describe('Admin API key routes', () => {
         .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('API key revoked');
-      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
-        kind: 'api_key.revoked',
-        actorId: 'admin-1',
-        subjectId: KEY_ID,
-        subjectLabel: 'Test Key',
-      }));
+      expect(activityInsert!.values).toHaveBeenCalledWith([
+        buildAdminActivityInsert({
+          kind: 'api_key.revoked',
+          actorId: 'admin-1',
+          knowledgeBaseId: '00000000-0000-4000-8000-000000000001',
+          subjectId: KEY_ID,
+          subjectLabel: 'Test Key',
+        }),
+      ]);
+    });
+
+    it('records one api_key.revoked activity row per associated knowledge base', async () => {
+      const knowledgeBaseIds = [
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002',
+      ];
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-2' }, { id: 'evt-3' }]);
+        const tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([{
+              id: KEY_ID,
+              name: 'Test Key',
+              keyHash: 'somehash',
+              createdBy: 'admin-1',
+              createdAt: new Date(),
+              lastUsedAt: null,
+              revokedAt: null,
+            }]))
+            .mockReturnValueOnce(createChain(knowledgeBaseIds.map((knowledgeBaseId) => ({ knowledgeBaseId })))),
+          update: vi.fn().mockReturnValueOnce(createChain([{
+            id: KEY_ID,
+            name: 'Test Key',
+            keyHash: 'somehash',
+            createdBy: 'admin-1',
+            createdAt: new Date(),
+            lastUsedAt: null,
+            revokedAt: new Date(),
+          }])),
+          insert: vi.fn().mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete(`/api/admin/api-keys/${KEY_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(activityInsert!.values).toHaveBeenCalledWith(
+        knowledgeBaseIds.map((knowledgeBaseId) => buildAdminActivityInsert({
+          kind: 'api_key.revoked',
+          actorId: 'admin-1',
+          knowledgeBaseId,
+          subjectId: KEY_ID,
+          subjectLabel: 'Test Key',
+        })),
+      );
     });
 
     it('returns 409 without activity when revoke loses a race', async () => {

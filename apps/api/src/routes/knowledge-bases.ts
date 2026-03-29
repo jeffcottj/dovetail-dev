@@ -140,15 +140,7 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
       return;
     }
 
-    const [importJobCount] = await tx
-      .select({ count: sql<number>`count(*)` })
-      .from(importJobs)
-      .where(eq(importJobs.knowledgeBaseId, id));
-
-    if (Number(importJobCount.count) > 0) {
-      hasDependents = true;
-      return;
-    }
+    await tx.delete(importJobs).where(eq(importJobs.knowledgeBaseId, id));
 
     if (kb) {
       await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
@@ -164,7 +156,7 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
   });
 
   if (hasDependents) {
-    res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories, tags, and import jobs first.' });
+    res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories and tags first.' });
     return;
   }
 

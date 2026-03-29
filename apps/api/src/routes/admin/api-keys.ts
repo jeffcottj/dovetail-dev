@@ -34,12 +34,15 @@ apiKeysRouter.post('/', authMiddleware, requireRole('admin'), validateBody(creat
       knowledgeBaseIds.map((kbId: string) => ({ apiKeyId: created.id, knowledgeBaseId: kbId })),
     );
 
-    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-      kind: 'api_key.created',
-      actorId: req.user!.id,
-      subjectId: created.id,
-      subjectLabel: created.name,
-    }));
+    await tx.insert(adminActivityEvents).values(
+      knowledgeBaseIds.map((knowledgeBaseId: string) => buildAdminActivityInsert({
+        kind: 'api_key.created',
+        actorId: req.user!.id,
+        knowledgeBaseId,
+        subjectId: created.id,
+        subjectLabel: created.name,
+      })),
+    );
 
     return created;
   });
@@ -98,12 +101,27 @@ apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: A
       return { outcome: 'already_revoked' as const };
     }
 
-    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-      kind: 'api_key.revoked',
-      actorId: req.user!.id,
-      subjectId: key.id,
-      subjectLabel: key.name,
-    }));
+    const associatedKnowledgeBases = await tx
+      .select({ knowledgeBaseId: apiKeyKnowledgeBases.knowledgeBaseId })
+      .from(apiKeyKnowledgeBases)
+      .where(eq(apiKeyKnowledgeBases.apiKeyId, id));
+
+    const activityRows = associatedKnowledgeBases.length > 0
+      ? associatedKnowledgeBases.map(({ knowledgeBaseId }) => buildAdminActivityInsert({
+        kind: 'api_key.revoked',
+        actorId: req.user!.id,
+        knowledgeBaseId,
+        subjectId: key.id,
+        subjectLabel: key.name,
+      }))
+      : [buildAdminActivityInsert({
+        kind: 'api_key.revoked',
+        actorId: req.user!.id,
+        subjectId: key.id,
+        subjectLabel: key.name,
+      })];
+
+    await tx.insert(adminActivityEvents).values(activityRows);
 
     return { outcome: 'revoked' as const };
   });
