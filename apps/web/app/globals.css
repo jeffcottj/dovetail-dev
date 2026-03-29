@@ -21,6 +21,10 @@
   --color-mint: #87CCC3;
   --color-teal: #007A6B;
   --color-bright-blue: #5B8DE0;
+  --color-admin-bg: #f4f7fb;
+  --color-admin-rail: #094A6B;
+  --color-admin-rail-muted: #0b5a82;
+  --color-admin-panel: #ffffff;
 
   /* Sidebar */
   --color-sidebar: #094A6B;
@@ -55,6 +59,10 @@
   --color-mint: #87CCC3;
   --color-teal: #5eead4;
   --color-bright-blue: #93B8F0;
+  --color-admin-bg: #0f172a;
+  --color-admin-rail: #061320;
+  --color-admin-rail-muted: #132033;
+  --color-admin-panel: #111827;
 
   --color-sidebar: #061320;
   --color-sidebar-hover: #0e1d2e;
