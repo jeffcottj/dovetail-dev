@@ -464,7 +464,7 @@ articlesRouter.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
   const [archived] = await db
     .update(articles)
     .set({ status: 'archived', updatedAt: new Date() })
-    .where(and(eq(articles.id, id), eq(articles.categoryId, article.categoryId)))
+    .where(buildArticleCurrentStatePredicate(article))
     .returning();
 
   if (!archived) {
@@ -485,7 +485,7 @@ articlesRouter.post('/:id/publish', authMiddleware, async (req: AuthRequest, res
   const [published] = await db
     .update(articles)
     .set({ status: 'published', publishedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(articles.id, id), eq(articles.categoryId, article.categoryId)))
+    .where(buildArticleCurrentStatePredicate(article))
     .returning();
 
   if (!published) {

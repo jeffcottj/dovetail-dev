@@ -643,6 +643,33 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(409);
     });
+
+    it('returns 409 when a same-category lifecycle change wins before archive update', async () => {
+      const archived = { ...mockArticle, status: 'archived' as const };
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockImplementation(() => ({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockImplementation((condition: unknown) => ({
+            returning: vi.fn().mockResolvedValue(
+              predicateReferencesColumn(condition, 'status')
+                && predicateReferencesColumn(condition, 'published_at')
+                ? []
+                : [archived],
+            ),
+          })),
+        }),
+      }));
+
+      const res = await supertest(app)
+        .delete(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
+    });
   });
 
   describe('POST /api/knowledge-bases/kb-1/articles/:id/publish', () => {
@@ -697,6 +724,33 @@ describe('Article routes', () => {
         .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
       (db.execute as Mock).mockResolvedValue([]);
       (db.update as Mock).mockReturnValue(createChain([]));
+
+      const res = await supertest(app)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 when a same-category lifecycle change wins before publish update', async () => {
+      const published = { ...mockArticle, status: 'published' as const, publishedAt: new Date() };
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockImplementation(() => ({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockImplementation((condition: unknown) => ({
+            returning: vi.fn().mockResolvedValue(
+              predicateReferencesColumn(condition, 'status')
+                && predicateReferencesColumn(condition, 'published_at')
+                ? []
+                : [published],
+            ),
+          })),
+        }),
+      }));
 
       const res = await supertest(app)
         .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
