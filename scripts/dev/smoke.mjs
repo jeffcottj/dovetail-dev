@@ -94,9 +94,9 @@ async function run() {
   if (smokeAi) {
     logStep('Checking semantic search');
     const semantic = await fetchJson(
-      `${apiUrl}/api/search?q=notice&mode=semantic`,
+      `${apiUrl}/api/knowledge-bases/${housingKb.id}/search?q=notice&mode=semantic`,
       { headers: authHeaders },
-      'API semantic search',
+      'API /api/knowledge-bases/:kbId/search semantic search',
     );
     assert(semantic.total >= 1, 'Semantic search did not return any seeded results');
 
