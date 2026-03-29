@@ -17,6 +17,8 @@ import type { Role } from '@dovetail/types';
 export const articlesRouter: Router = Router({ mergeParams: true });
 
 const ARTICLE_UPDATE_NOT_FOUND = 'ARTICLE_UPDATE_NOT_FOUND';
+const ARTICLE_DESTINATION_NOT_FOUND = 'ARTICLE_DESTINATION_NOT_FOUND';
+const ARTICLE_DESTINATION_FORBIDDEN = 'ARTICLE_DESTINATION_FORBIDDEN';
 
 const createArticleSchema = z.object({
   title: z.string().min(1).max(500),
@@ -132,6 +134,7 @@ articlesRouter.get('/:id', authMiddleware, async (req, res) => {
 articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(createArticleSchema), async (req: AuthRequest, res) => {
   const { title, categoryId, content } = req.body;
   const slug = toSlug(title);
+  const kbId = req.params.kbId as string | undefined;
 
   const plainText = extractText(content);
 
@@ -140,6 +143,17 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
       .select({ knowledgeBaseId: categories.knowledgeBaseId })
       .from(categories)
       .where(eq(categories.id, categoryId));
+
+    if (!category || (kbId && category.knowledgeBaseId !== kbId)) {
+      throw new Error(ARTICLE_DESTINATION_NOT_FOUND);
+    }
+
+    const effectiveRole = await resolveRole(
+      req.user!.id, categoryId, category.knowledgeBaseId, req.user!.role as Role,
+    );
+    if (!hasMinimumRole(effectiveRole, 'editor')) {
+      throw new Error(ARTICLE_DESTINATION_FORBIDDEN);
+    }
 
     const [created] = await tx.insert(articles).values({
       title,
@@ -164,27 +178,58 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
     return created;
   });
 
+  const handleCreateError = (err: Error) => {
+    if (err.message === ARTICLE_DESTINATION_NOT_FOUND) {
+      res.status(404).json({ error: 'Category not found' });
+      return true;
+    }
+
+    if (err.message === ARTICLE_DESTINATION_FORBIDDEN) {
+      res.status(403).json({ error: 'Forbidden' });
+      return true;
+    }
+
+    return false;
+  };
+
   try {
-    const created = await createDraftArticle(slug);
+    let created;
+    try {
+      created = await createDraftArticle(slug);
+    } catch (err: any) {
+      if (handleCreateError(err)) {
+        return;
+      }
+
+      if (!(err.code === '23505' && err.constraint_name?.includes('slug'))) {
+        throw err;
+      }
+
+      const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
+
+      try {
+        created = await createDraftArticle(uniqueSlug);
+      } catch (retryErr: any) {
+        if (handleCreateError(retryErr)) {
+          return;
+        }
+
+        throw retryErr;
+      }
+    }
+
     void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
     const categoryPath = await buildCategoryPath(created.categoryId);
     res.status(201).json({ ...created, categoryPath });
   } catch (err: any) {
-    if (err.code === '23505' && err.constraint_name?.includes('slug')) {
-      const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
-      const created = await createDraftArticle(uniqueSlug);
-      void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
-      const categoryPath = await buildCategoryPath(created.categoryId);
-      res.status(201).json({ ...created, categoryPath });
-    } else {
-      throw err;
-    }
+    throw err;
   }
 });
 
 // PATCH /api/articles/:id — update (creates version)
 articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody(updateArticleSchema), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
+  const kbId = req.params.kbId as string | undefined;
 
   let result: any;
   try {
@@ -207,6 +252,25 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
       if (!hasMinimumRole(effectiveRole, 'editor')) {
         res.status(403).json({ error: 'Forbidden' });
         return;
+      }
+
+      if (req.body.categoryId !== undefined && req.body.categoryId !== current.categoryId) {
+        const [destinationCategory] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
+          .from(categories)
+          .where(eq(categories.id, req.body.categoryId));
+
+        if (!destinationCategory || (kbId && destinationCategory.knowledgeBaseId !== kbId)) {
+          res.status(404).json({ error: 'Category not found' });
+          return;
+        }
+
+        const destinationRole = await resolveRole(
+          req.user!.id, req.body.categoryId, destinationCategory.knowledgeBaseId, req.user!.role as Role,
+        );
+        if (!hasMinimumRole(destinationRole, 'editor')) {
+          res.status(403).json({ error: 'Forbidden' });
+          return;
+        }
       }
 
       // 3. Compute next version number

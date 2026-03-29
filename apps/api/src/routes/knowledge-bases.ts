@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';
-import { adminActivityEvents, db, knowledgeBases, categories, userKbRoles } from '@dovetail/db';
+import { adminActivityEvents, db, knowledgeBases, categories, importJobs, tags, userKbRoles } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { resolveKb, requireKbAdmin } from '../middleware/resolveKb.js';
@@ -116,7 +116,7 @@ knowledgeBasesRouter.patch(
 // DELETE /api/knowledge-bases/:id — delete KB (global admin only, fails if has categories)
 knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
-  let hasCategories = false;
+  let hasDependents = false;
 
   await db.transaction(async (tx) => {
     const [kb] = await tx.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
@@ -125,8 +125,28 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
       .from(categories)
       .where(eq(categories.knowledgeBaseId, id));
 
-    hasCategories = Number(catCount.count) > 0;
-    if (hasCategories) {
+    if (Number(catCount.count) > 0) {
+      hasDependents = true;
+      return;
+    }
+
+    const [tagCount] = await tx
+      .select({ count: sql<number>`count(*)` })
+      .from(tags)
+      .where(eq(tags.knowledgeBaseId, id));
+
+    if (Number(tagCount.count) > 0) {
+      hasDependents = true;
+      return;
+    }
+
+    const [importJobCount] = await tx
+      .select({ count: sql<number>`count(*)` })
+      .from(importJobs)
+      .where(eq(importJobs.knowledgeBaseId, id));
+
+    if (Number(importJobCount.count) > 0) {
+      hasDependents = true;
       return;
     }
 
@@ -143,8 +163,8 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
     await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
   });
 
-  if (hasCategories) {
-    res.status(409).json({ error: 'Cannot delete knowledge base with categories. Remove all categories first.' });
+  if (hasDependents) {
+    res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories, tags, and import jobs first.' });
     return;
   }
 

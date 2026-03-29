@@ -160,6 +160,61 @@ describe('Knowledge Base routes', () => {
       expect(res.status).toBe(409);
     });
 
+    it('returns 409 when KB has tags but no categories', async () => {
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 1 }])),
+          insert: vi.fn(),
+          delete: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.delete).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when KB has import jobs but no categories', async () => {
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 1 }])),
+          insert: vi.fn(),
+          delete: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.delete).not.toHaveBeenCalled();
+    });
+
     it('deletes KB when empty', async () => {
       let activityInsert: ReturnType<typeof createChain>;
       let deleteChain: ReturnType<typeof createChain>;
@@ -169,6 +224,8 @@ describe('Knowledge Base routes', () => {
         const tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
             .mockReturnValueOnce(createChain([{ count: 0 }])),
           insert: vi.fn().mockReturnValueOnce(activityInsert),
           delete: vi.fn().mockReturnValueOnce(deleteChain),
