@@ -1,11 +1,10 @@
 import Link from 'next/link';
-import { FilePlus, Search, Clock, FileEdit } from 'lucide-react';
+import { Clock, FileEdit } from 'lucide-react';
 import { auth } from '../../../../auth';
 import { apiFetch } from '../../../../lib/api';
 import { getKbBySlug } from '../../../../lib/kb';
 import { hasMinimumRole } from '../../../../lib/roles';
 import { articleUrl } from '../../../../lib/article-url';
-import { Button } from '../../../../components/ui/Button';
 import { Card } from '../../../../components/ui/Card';
 import { Badge } from '../../../../components/ui/Badge';
 import type { Article, Role } from '@dovetail/types';
@@ -41,7 +40,7 @@ export default async function KbHomePage({ params }: { params: Promise<{ kbSlug:
   }
 
   return (
-    <main id="main-content" className="flex-1 p-8">
+    <div>
       <header className="mb-8">
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-ink mb-2 tracking-tight">
           {kb.name}
@@ -50,17 +49,6 @@ export default async function KbHomePage({ params }: { params: Promise<{ kbSlug:
           <p className="text-ink-muted font-[family-name:var(--font-ui)] text-sm">{kb.description}</p>
         )}
       </header>
-
-      <div className="flex items-center gap-3 mb-10">
-        {isEditor && (
-          <Link href={`/kb/${kbSlug}/articles/new`}>
-            <Button><FilePlus className="w-4 h-4" /> New Article</Button>
-          </Link>
-        )}
-        <Link href={`/kb/${kbSlug}/search`}>
-          <Button variant="secondary"><Search className="w-4 h-4" /> Search</Button>
-        </Link>
-      </div>
 
       {isEditor && userDrafts.length > 0 && (
         <section className="mb-10">
@@ -116,6 +104,6 @@ export default async function KbHomePage({ params }: { params: Promise<{ kbSlug:
           </ul>
         )}
       </section>
-    </main>
+    </div>
   );
 }

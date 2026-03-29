@@ -8,9 +8,10 @@ const STORAGE_KEY = 'dovetail-sidebar-collapsed';
 
 interface SidebarWrapperProps {
   children: ReactNode;
+  toggleClassName?: string;
 }
 
-export function SidebarWrapper({ children }: SidebarWrapperProps) {
+export function SidebarWrapper({ children, toggleClassName = 'top-8 -right-4' }: SidebarWrapperProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -47,7 +48,7 @@ export function SidebarWrapper({ children }: SidebarWrapperProps) {
       )}
       <button
         onClick={toggle}
-        className="absolute top-8 -right-4 z-20 w-8 h-8 rounded-full bg-sidebar border border-border/40 flex items-center justify-center text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-active transition-colors shadow-md"
+        className={`absolute ${toggleClassName} z-20 w-8 h-8 rounded-full bg-sidebar border border-border/40 flex items-center justify-center text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-active transition-colors shadow-md`}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {collapsed
