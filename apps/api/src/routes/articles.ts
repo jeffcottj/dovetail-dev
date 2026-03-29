@@ -17,6 +17,7 @@ import type { Role } from '@dovetail/types';
 export const articlesRouter: Router = Router({ mergeParams: true });
 
 const ARTICLE_UPDATE_NOT_FOUND = 'ARTICLE_UPDATE_NOT_FOUND';
+const ARTICLE_UPDATE_CONFLICT = 'ARTICLE_UPDATE_CONFLICT';
 const ARTICLE_DESTINATION_NOT_FOUND = 'ARTICLE_DESTINATION_NOT_FOUND';
 const ARTICLE_DESTINATION_FORBIDDEN = 'ARTICLE_DESTINATION_FORBIDDEN';
 
@@ -350,18 +351,24 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
 
       let updated;
       try {
-        [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+        [updated] = await tx.update(articles)
+          .set(updates)
+          .where(and(eq(articles.id, id), eq(articles.categoryId, current.categoryId)))
+          .returning();
       } catch (err: any) {
         if (err.code === '23505' && err.constraint_name?.includes('slug')) {
           updates.slug = `${updates.slug}-${Date.now().toString(36)}`;
-          [updated] = await tx.update(articles).set(updates).where(eq(articles.id, id)).returning();
+          [updated] = await tx.update(articles)
+            .set(updates)
+            .where(and(eq(articles.id, id), eq(articles.categoryId, current.categoryId)))
+            .returning();
         } else {
           throw err;
         }
       }
 
       if (!updated) {
-        throw new Error(ARTICLE_UPDATE_NOT_FOUND);
+        throw new Error(ARTICLE_UPDATE_CONFLICT);
       }
 
       didChange = true;
@@ -382,6 +389,10 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
   } catch (err: any) {
     if (err.message === ARTICLE_UPDATE_NOT_FOUND) {
       res.status(404).json({ error: 'Article not found' });
+      return;
+    }
+    if (err.message === ARTICLE_UPDATE_CONFLICT) {
+      res.status(409).json({ error: 'Article changed during update' });
       return;
     }
     throw err;
@@ -406,11 +417,11 @@ articlesRouter.delete('/:id', authMiddleware, requireRole('editor'), async (req:
   const [archived] = await db
     .update(articles)
     .set({ status: 'archived', updatedAt: new Date() })
-    .where(eq(articles.id, id))
+    .where(and(eq(articles.id, id), eq(articles.categoryId, article.categoryId)))
     .returning();
 
   if (!archived) {
-    res.status(404).json({ error: 'Article not found' });
+    res.status(409).json({ error: 'Article changed during archive' });
     return;
   }
   res.json(archived);
@@ -427,11 +438,11 @@ articlesRouter.post('/:id/publish', authMiddleware, requireRole('editor'), async
   const [published] = await db
     .update(articles)
     .set({ status: 'published', publishedAt: new Date(), updatedAt: new Date() })
-    .where(eq(articles.id, id))
+    .where(and(eq(articles.id, id), eq(articles.categoryId, article.categoryId)))
     .returning();
 
   if (!published) {
-    res.status(404).json({ error: 'Article not found' });
+    res.status(409).json({ error: 'Article changed during publish' });
     return;
   }
   res.json(published);

@@ -160,6 +160,30 @@ describe('Knowledge Base routes', () => {
       expect(res.status).toBe(409);
     });
 
+    it('returns 404 when the knowledge base does not exist', async () => {
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([])),
+          insert: vi.fn(),
+          delete: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/missing-kb')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.delete).not.toHaveBeenCalled();
+    });
+
     it('returns 409 when KB has tags but no categories', async () => {
       let tx: {
         select: ReturnType<typeof vi.fn>;

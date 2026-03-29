@@ -325,7 +325,7 @@ describe('Article routes', () => {
       expect(db.execute).not.toHaveBeenCalled();
     });
 
-    it('returns 404 when the article disappears before the update returns', async () => {
+    it('returns 409 when the article changes before the conditional update returns', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
 
       let activityInsert: ReturnType<typeof createChain>;
@@ -351,7 +351,7 @@ describe('Article routes', () => {
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
         .send({ title: 'Updated Title' });
 
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(409);
       expect(activityInsert!.values).not.toHaveBeenCalled();
     });
 
@@ -451,6 +451,21 @@ describe('Article routes', () => {
       expect(db.update).not.toHaveBeenCalled();
       expect(db.execute).not.toHaveBeenCalled();
     });
+
+    it('returns 409 when archiving loses a race with a concurrent move', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockReturnValue(createChain([]));
+
+      const res = await supertest(app)
+        .delete(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
+    });
   });
 
   describe('POST /api/knowledge-bases/kb-1/articles/:id/publish', () => {
@@ -496,6 +511,21 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(403);
       expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when publishing loses a race with a concurrent move', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockReturnValue(createChain([]));
+
+      const res = await supertest(app)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
     });
   });
 });

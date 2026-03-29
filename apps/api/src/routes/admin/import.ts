@@ -233,6 +233,13 @@ importRouter.get(
       Connection: 'keep-alive',
     });
 
+    // Check if job is already complete
+    if (job.status === 'completed' || job.status === 'failed') {
+      res.write(`data: ${JSON.stringify({ type: 'complete', imported: job.importedCount, errors: (job.errorLog as any[]).length })}\n\n`);
+      res.end();
+      return;
+    }
+
     const listener = (event: ProgressEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
       if (event.type === 'complete') {
@@ -244,13 +251,6 @@ importRouter.get(
       jobListeners.set(jobId, new Set());
     }
     jobListeners.get(jobId)!.add(listener);
-
-    // Check if job is already complete
-    if (job.status === 'completed' || job.status === 'failed') {
-      res.write(`data: ${JSON.stringify({ type: 'complete', imported: job.importedCount, errors: (job.errorLog as any[]).length })}\n\n`);
-      res.end();
-      return;
-    }
 
     req.on('close', () => {
       const listeners = jobListeners.get(jobId);

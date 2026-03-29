@@ -117,9 +117,15 @@ knowledgeBasesRouter.patch(
 knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   let hasDependents = false;
+  let notFound = false;
 
   await db.transaction(async (tx) => {
     const [kb] = await tx.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
+    if (!kb) {
+      notFound = true;
+      return;
+    }
+
     const [catCount] = await tx
       .select({ count: sql<number>`count(*)` })
       .from(categories)
@@ -155,18 +161,21 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
 
     await tx.delete(importJobs).where(eq(importJobs.knowledgeBaseId, id));
 
-    if (kb) {
-      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-        kind: 'kb.deleted',
-        actorId: req.user!.id,
-        knowledgeBaseId: id,
-        subjectId: id,
-        subjectLabel: kb.name,
-      }));
-    }
+    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'kb.deleted',
+      actorId: req.user!.id,
+      knowledgeBaseId: id,
+      subjectId: id,
+      subjectLabel: kb.name,
+    }));
 
     await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
   });
+
+  if (notFound) {
+    res.status(404).json({ error: 'Knowledge base not found' });
+    return;
+  }
 
   if (hasDependents) {
     res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories, tags, and active import jobs first.' });
