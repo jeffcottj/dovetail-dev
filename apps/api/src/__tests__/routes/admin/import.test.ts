@@ -125,4 +125,31 @@ describe('Import admin routes', () => {
       });
     });
   });
+
+  describe('GET /api/knowledge-bases/kb-1/admin/import', () => {
+    it('lists jobs scoped to the current knowledge base', async () => {
+      const listChain = createChain([
+        {
+          id: JOB_ID,
+          knowledgeBaseId: 'kb-1',
+          status: 'completed',
+          importedCount: 2,
+          errorLog: [],
+          createdAt: new Date(),
+        },
+      ]);
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(listChain);
+
+      const res = await supertest(app)
+        .get('/api/knowledge-bases/kb-1/admin/import')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(listChain.where).toHaveBeenCalled();
+      expect(listChain.orderBy).toHaveBeenCalled();
+    });
+  });
 });

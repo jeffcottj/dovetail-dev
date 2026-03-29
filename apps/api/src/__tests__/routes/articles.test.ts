@@ -422,7 +422,11 @@ describe('Article routes', () => {
   describe('DELETE /api/knowledge-bases/kb-1/articles/:id', () => {
     it('archives article (soft delete)', async () => {
       const archived = { ...mockArticle, status: 'archived' };
-      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
       (db.update as Mock).mockReturnValue(createChain([archived]));
 
       const res = await supertest(app)
@@ -432,12 +436,31 @@ describe('Article routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('archived');
     });
+
+    it('returns 404 when archiving an article from another knowledge base', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }]));
+
+      const res = await supertest(app)
+        .delete(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(404);
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.execute).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/knowledge-bases/kb-1/articles/:id/publish', () => {
     it('publishes a draft article', async () => {
       const published = { ...mockArticle, status: 'published', publishedAt: new Date() };
-      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
       (db.update as Mock).mockReturnValue(createChain([published]));
 
       const res = await supertest(app)
@@ -449,14 +472,30 @@ describe('Article routes', () => {
     });
 
     it('returns 404 when article not found', async () => {
-      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.update as Mock).mockReturnValue(createChain([]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([]));
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/articles/nonexistent/publish')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(404);
+    });
+
+    it('returns 403 when publishing without effective editor role', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValueOnce([{ role: 'viewer' }]);
+
+      const res = await supertest(app)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(403);
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 });

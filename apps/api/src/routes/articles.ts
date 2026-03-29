@@ -37,6 +37,34 @@ const listQuerySchema = paginationSchema.extend({
   categoryId: z.string().uuid().optional(),
 });
 
+async function loadScopedEditorArticle(req: AuthRequest, res: any, id: string) {
+  const [article] = await db.select().from(articles).where(eq(articles.id, id));
+  if (!article) {
+    res.status(404).json({ error: 'Article not found' });
+    return null;
+  }
+
+  const [category] = await db.select({ knowledgeBaseId: categories.knowledgeBaseId })
+    .from(categories)
+    .where(eq(categories.id, article.categoryId));
+
+  const kbId = req.params.kbId as string | undefined;
+  if (kbId && category?.knowledgeBaseId !== kbId) {
+    res.status(404).json({ error: 'Article not found' });
+    return null;
+  }
+
+  const effectiveRole = await resolveRole(
+    req.user!.id, article.categoryId, category?.knowledgeBaseId, req.user!.role as Role,
+  );
+  if (!hasMinimumRole(effectiveRole, 'editor')) {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+
+  return article;
+}
+
 // GET /api/articles — paginated list
 articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (req, res) => {
   const { page, limit, status, categoryId } = res.locals.query as z.infer<typeof listQuerySchema>;
@@ -368,8 +396,13 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
 });
 
 // DELETE /api/articles/:id — archive (soft delete)
-articlesRouter.delete('/:id', authMiddleware, requireRole('editor'), async (req, res) => {
+articlesRouter.delete('/:id', authMiddleware, requireRole('editor'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
+  const article = await loadScopedEditorArticle(req, res, id);
+  if (!article) {
+    return;
+  }
+
   const [archived] = await db
     .update(articles)
     .set({ status: 'archived', updatedAt: new Date() })
@@ -384,8 +417,13 @@ articlesRouter.delete('/:id', authMiddleware, requireRole('editor'), async (req,
 });
 
 // POST /api/articles/:id/publish
-articlesRouter.post('/:id/publish', authMiddleware, requireRole('editor'), async (req, res) => {
+articlesRouter.post('/:id/publish', authMiddleware, requireRole('editor'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
+  const article = await loadScopedEditorArticle(req, res, id);
+  if (!article) {
+    return;
+  }
+
   const [published] = await db
     .update(articles)
     .set({ status: 'published', publishedAt: new Date(), updatedAt: new Date() })

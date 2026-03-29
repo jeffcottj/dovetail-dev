@@ -5,7 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { eq, desc } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { adminActivityEvents, db, importJobs } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -216,6 +216,16 @@ importRouter.get(
   requireRole('admin'),
   async (req, res) => {
     const jobId = req.params.id as string;
+    const kbId = req.params.kbId as string;
+
+    const [job] = await db
+      .select()
+      .from(importJobs)
+      .where(and(eq(importJobs.id, jobId), eq(importJobs.knowledgeBaseId, kbId)));
+    if (!job) {
+      res.status(404).json({ error: 'Import job not found' });
+      return;
+    }
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -236,8 +246,7 @@ importRouter.get(
     jobListeners.get(jobId)!.add(listener);
 
     // Check if job is already complete
-    const [job] = await db.select().from(importJobs).where(eq(importJobs.id, jobId));
-    if (job && (job.status === 'completed' || job.status === 'failed')) {
+    if (job.status === 'completed' || job.status === 'failed') {
       res.write(`data: ${JSON.stringify({ type: 'complete', imported: job.importedCount, errors: (job.errorLog as any[]).length })}\n\n`);
       res.end();
       return;
@@ -258,7 +267,13 @@ importRouter.get(
   authMiddleware,
   requireRole('admin'),
   async (req, res) => {
-    const [job] = await db.select().from(importJobs).where(eq(importJobs.id, req.params.id as string));
+    const [job] = await db
+      .select()
+      .from(importJobs)
+      .where(and(
+        eq(importJobs.id, req.params.id as string),
+        eq(importJobs.knowledgeBaseId, req.params.kbId as string),
+      ));
     if (!job) {
       res.status(404).json({ error: 'Import job not found' });
       return;
@@ -272,8 +287,12 @@ importRouter.get(
   '/',
   authMiddleware,
   requireRole('admin'),
-  async (_req, res) => {
-    const jobs = await db.select().from(importJobs).orderBy(desc(importJobs.createdAt));
+  async (req, res) => {
+    const jobs = await db
+      .select()
+      .from(importJobs)
+      .where(eq(importJobs.knowledgeBaseId, req.params.kbId as string))
+      .orderBy(desc(importJobs.createdAt));
     res.json(jobs);
   },
 );
