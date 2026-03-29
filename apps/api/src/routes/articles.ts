@@ -21,6 +21,10 @@ const ARTICLE_UPDATE_CONFLICT = 'ARTICLE_UPDATE_CONFLICT';
 const ARTICLE_DESTINATION_NOT_FOUND = 'ARTICLE_DESTINATION_NOT_FOUND';
 const ARTICLE_DESTINATION_FORBIDDEN = 'ARTICLE_DESTINATION_FORBIDDEN';
 
+function isCategoryReferenceConflict(err: any) {
+  return err?.code === '23503';
+}
+
 const createArticleSchema = z.object({
   title: z.string().min(1).max(500),
   categoryId: z.string().uuid(),
@@ -184,15 +188,24 @@ articlesRouter.post('/', authMiddleware, requireRole('editor'), validateBody(cre
       throw new Error(ARTICLE_DESTINATION_FORBIDDEN);
     }
 
-    const [created] = await tx.insert(articles).values({
-      title,
-      slug: articleSlug,
-      categoryId,
-      authorId: req.user!.id,
-      content,
-      plainText,
-      status: 'draft',
-    }).returning();
+    let created;
+    try {
+      [created] = await tx.insert(articles).values({
+        title,
+        slug: articleSlug,
+        categoryId,
+        authorId: req.user!.id,
+        content,
+        plainText,
+        status: 'draft',
+      }).returning();
+    } catch (err: any) {
+      if (isCategoryReferenceConflict(err)) {
+        throw new Error(ARTICLE_DESTINATION_NOT_FOUND);
+      }
+      throw err;
+    }
+
     if (!created) {
       throw new Error('Article creation failed');
     }
@@ -327,16 +340,7 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
         .where(eq(articleVersions.articleId, id));
       const nextVersion = (maxVersion?.max ?? 0) + 1;
 
-      // 4. Snapshot current content as a version
-      await tx.insert(articleVersions).values({
-        articleId: id,
-        title: current.title,
-        content: current.content,
-        authorId: req.user!.id,
-        versionNumber: nextVersion,
-      });
-
-      // 5. Apply updates
+      // 4. Apply updates with optimistic concurrency on the row we authorized.
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       if (req.body.title !== undefined) {
         updates.title = req.body.title;
@@ -353,15 +357,34 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
       try {
         [updated] = await tx.update(articles)
           .set(updates)
-          .where(and(eq(articles.id, id), eq(articles.categoryId, current.categoryId)))
+          .where(and(
+            eq(articles.id, id),
+            eq(articles.categoryId, current.categoryId),
+            eq(articles.updatedAt, current.updatedAt),
+          ))
           .returning();
       } catch (err: any) {
+        if (isCategoryReferenceConflict(err) && req.body.categoryId !== undefined && req.body.categoryId !== current.categoryId) {
+          throw new Error(ARTICLE_DESTINATION_NOT_FOUND);
+        }
+
         if (err.code === '23505' && err.constraint_name?.includes('slug')) {
           updates.slug = `${updates.slug}-${Date.now().toString(36)}`;
-          [updated] = await tx.update(articles)
-            .set(updates)
-            .where(and(eq(articles.id, id), eq(articles.categoryId, current.categoryId)))
-            .returning();
+          try {
+            [updated] = await tx.update(articles)
+              .set(updates)
+              .where(and(
+                eq(articles.id, id),
+                eq(articles.categoryId, current.categoryId),
+                eq(articles.updatedAt, current.updatedAt),
+              ))
+              .returning();
+          } catch (retryErr: any) {
+            if (isCategoryReferenceConflict(retryErr) && req.body.categoryId !== undefined && req.body.categoryId !== current.categoryId) {
+              throw new Error(ARTICLE_DESTINATION_NOT_FOUND);
+            }
+            throw retryErr;
+          }
         } else {
           throw err;
         }
@@ -370,6 +393,15 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
       if (!updated) {
         throw new Error(ARTICLE_UPDATE_CONFLICT);
       }
+
+      // 5. Snapshot the previously-authorized state only after the update succeeds.
+      await tx.insert(articleVersions).values({
+        articleId: id,
+        title: current.title,
+        content: current.content,
+        authorId: req.user!.id,
+        versionNumber: nextVersion,
+      });
 
       didChange = true;
       result = updated;
@@ -389,6 +421,10 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
   } catch (err: any) {
     if (err.message === ARTICLE_UPDATE_NOT_FOUND) {
       res.status(404).json({ error: 'Article not found' });
+      return;
+    }
+    if (err.message === ARTICLE_DESTINATION_NOT_FOUND) {
+      res.status(404).json({ error: 'Category not found' });
       return;
     }
     if (err.message === ARTICLE_UPDATE_CONFLICT) {

@@ -10,6 +10,7 @@ import { validateBody } from '../utils/validate.js';
 import { toSlug } from '../utils/slug.js';
 
 export const knowledgeBasesRouter: Router = Router();
+const KNOWLEDGE_BASE_DELETE_CONFLICT = 'KNOWLEDGE_BASE_DELETE_CONFLICT';
 
 const createKbSchema = z.object({
   name: z.string().min(1).max(200),
@@ -119,58 +120,76 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
   let hasDependents = false;
   let notFound = false;
 
-  await db.transaction(async (tx) => {
-    const [kb] = await tx.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
-    if (!kb) {
-      notFound = true;
-      return;
-    }
+  try {
+    await db.transaction(async (tx) => {
+      const [kb] = await tx.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
+      if (!kb) {
+        notFound = true;
+        return;
+      }
 
-    const [catCount] = await tx
-      .select({ count: sql<number>`count(*)` })
-      .from(categories)
-      .where(eq(categories.knowledgeBaseId, id));
+      const [catCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(categories)
+        .where(eq(categories.knowledgeBaseId, id));
 
-    if (Number(catCount.count) > 0) {
-      hasDependents = true;
-      return;
-    }
+      if (Number(catCount.count) > 0) {
+        hasDependents = true;
+        return;
+      }
 
-    const [tagCount] = await tx
-      .select({ count: sql<number>`count(*)` })
-      .from(tags)
-      .where(eq(tags.knowledgeBaseId, id));
+      const [tagCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(tags)
+        .where(eq(tags.knowledgeBaseId, id));
 
-    if (Number(tagCount.count) > 0) {
-      hasDependents = true;
-      return;
-    }
+      if (Number(tagCount.count) > 0) {
+        hasDependents = true;
+        return;
+      }
 
-    const [activeImportJobCount] = await tx
-      .select({ count: sql<number>`count(*)` })
-      .from(importJobs)
-      .where(and(
+      await tx.delete(importJobs).where(and(
         eq(importJobs.knowledgeBaseId, id),
-        inArray(importJobs.status, ['pending', 'running']),
+        inArray(importJobs.status, ['completed', 'failed']),
       ));
 
-    if (Number(activeImportJobCount.count) > 0) {
-      hasDependents = true;
+      const [activeImportJobCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(importJobs)
+        .where(and(
+          eq(importJobs.knowledgeBaseId, id),
+          inArray(importJobs.status, ['pending', 'running']),
+        ));
+
+      if (Number(activeImportJobCount.count) > 0) {
+        hasDependents = true;
+        return;
+      }
+
+      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+        kind: 'kb.deleted',
+        actorId: req.user!.id,
+        knowledgeBaseId: id,
+        subjectId: id,
+        subjectLabel: kb.name,
+      }));
+
+      try {
+        await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
+      } catch (err: any) {
+        if (err?.code === '23503') {
+          throw new Error(KNOWLEDGE_BASE_DELETE_CONFLICT);
+        }
+        throw err;
+      }
+    });
+  } catch (err: any) {
+    if (err.message === KNOWLEDGE_BASE_DELETE_CONFLICT) {
+      res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories, tags, and active import jobs first.' });
       return;
     }
-
-    await tx.delete(importJobs).where(eq(importJobs.knowledgeBaseId, id));
-
-    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-      kind: 'kb.deleted',
-      actorId: req.user!.id,
-      knowledgeBaseId: id,
-      subjectId: id,
-      subjectLabel: kb.name,
-    }));
-
-    await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
-  });
+    throw err;
+  }
 
   if (notFound) {
     res.status(404).json({ error: 'Knowledge base not found' });

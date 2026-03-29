@@ -226,6 +226,35 @@ describe('Article routes', () => {
       expect(res.status).toBe(404);
       expect(tx!.insert).not.toHaveBeenCalled();
     });
+
+    it('returns 404 when the destination category disappears before article insert', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn().mockImplementationOnce(() => ({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockRejectedValue({ code: '23503' }),
+            }),
+          })),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases/kb-1/articles')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Test Article', categoryId: CAT_ID, content: {} });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('PATCH /api/knowledge-bases/kb-1/articles/:id', () => {
@@ -328,18 +357,18 @@ describe('Article routes', () => {
     it('returns 409 when the article changes before the conditional update returns', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
 
-      let activityInsert: ReturnType<typeof createChain>;
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
-        const versionInsert = createChain([]);
-        activityInsert = createChain([{ id: 'evt-article-edit' }]);
-        const tx = {
+        tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockArticle]))
             .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
             .mockReturnValueOnce(createChain([{ max: 0 }])),
-          insert: vi.fn()
-            .mockReturnValueOnce(versionInsert)
-            .mockReturnValueOnce(activityInsert),
+          insert: vi.fn(),
           update: vi.fn().mockReturnValue(createChain([])),
         };
         return fn(tx);
@@ -352,7 +381,7 @@ describe('Article routes', () => {
         .send({ title: 'Updated Title' });
 
       expect(res.status).toBe(409);
-      expect(activityInsert!.values).not.toHaveBeenCalled();
+      expect(tx!.insert).not.toHaveBeenCalled();
     });
 
     it('returns 404 when moving an article to a category from another knowledge base', async () => {
@@ -385,6 +414,44 @@ describe('Article routes', () => {
       expect(res.status).toBe(404);
       expect(tx!.insert).not.toHaveBeenCalled();
       expect(tx!.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the destination category disappears before the move update', async () => {
+      const nextCategoryId = '00000000-0000-4000-8000-000000000002';
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ max: 0 }])),
+          insert: vi.fn(),
+          update: vi.fn().mockImplementation(() => ({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockRejectedValue({ code: '23503' }),
+              }),
+            }),
+          })),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ categoryId: nextCategoryId });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).not.toHaveBeenCalled();
     });
 
     it('returns the current article without versioning or activity for a no-op patch', async () => {

@@ -217,7 +217,9 @@ describe('Knowledge Base routes', () => {
         insert: ReturnType<typeof vi.fn>;
         delete: ReturnType<typeof vi.fn>;
       };
+      let importJobsDeleteChain: ReturnType<typeof createChain>;
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        importJobsDeleteChain = createChain(undefined);
         tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockKb]))
@@ -225,7 +227,7 @@ describe('Knowledge Base routes', () => {
             .mockReturnValueOnce(createChain([{ count: 0 }]))
             .mockReturnValueOnce(createChain([{ count: 1 }])),
           insert: vi.fn(),
-          delete: vi.fn(),
+          delete: vi.fn().mockReturnValueOnce(importJobsDeleteChain),
         };
         return fn(tx);
       });
@@ -236,7 +238,8 @@ describe('Knowledge Base routes', () => {
 
       expect(res.status).toBe(409);
       expect(tx!.insert).not.toHaveBeenCalled();
-      expect(tx!.delete).not.toHaveBeenCalled();
+      expect(tx!.delete).toHaveBeenCalledTimes(1);
+      expect(importJobsDeleteChain!.where).toHaveBeenCalled();
     });
 
     it('deletes KB when only completed or failed import history exists and cleans up history', async () => {
@@ -312,6 +315,40 @@ describe('Knowledge Base routes', () => {
       }));
       expect(importJobsDeleteChain!.where).toHaveBeenCalled();
       expect(deleteChain!.where).toHaveBeenCalled();
+    });
+
+    it('returns 409 when KB delete loses a race to a new import job', async () => {
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
+      };
+      let importJobsDeleteChain: ReturnType<typeof createChain>;
+      const kbDeleteError = { code: '23503' };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        importJobsDeleteChain = createChain(undefined);
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 0 }])),
+          insert: vi.fn().mockReturnValueOnce(createChain([{ id: 'evt-kb-delete' }])),
+          delete: vi.fn()
+            .mockReturnValueOnce(importJobsDeleteChain)
+            .mockImplementationOnce(() => ({
+              where: vi.fn().mockRejectedValue(kbDeleteError),
+            })),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(409);
+      expect(tx!.delete).toHaveBeenCalledTimes(2);
     });
   });
 
