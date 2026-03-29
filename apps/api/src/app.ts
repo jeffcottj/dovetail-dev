@@ -46,6 +46,9 @@ app.use('/api/admin/api-keys', apiKeysRouter);
 import { adminUsersRouter } from './routes/admin/users.js';
 app.use('/api/admin/users', adminUsersRouter);
 
+import { overviewRouter } from './routes/admin/overview.js';
+app.use('/api/admin/overview', overviewRouter);
+
 import { ragRouter } from './routes/rag.js';
 app.use('/api/v1/rag', ragRouter);
 
@@ -58,6 +61,9 @@ app.use('/api/knowledge-bases/:kbId/admin/import', resolveKb, importRouter);
 
 import { bulkPublishRouter } from './routes/admin/bulk-publish.js';
 app.use('/api/knowledge-bases/:kbId/admin/articles/bulk-publish', resolveKb, bulkPublishRouter);
+
+import { kbOverviewRouter } from './routes/admin/kb-overview.js';
+app.use('/api/knowledge-bases/:kbId/admin/overview', resolveKb, kbOverviewRouter);
 
 import { knowledgeBasesRouter } from './routes/knowledge-bases.js';
 app.use('/api/knowledge-bases', knowledgeBasesRouter);
