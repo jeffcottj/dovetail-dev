@@ -1,3 +1,5 @@
+import type { AdminQuickActionItem } from '../../components/admin/AdminQuickActions';
+
 export interface AdminNavItem {
   label: string;
   href: string;
@@ -15,6 +17,26 @@ export interface AdminNavInput {
     slug: string;
     name: string;
   } | null;
+}
+
+export function buildGlobalAdminActions(): AdminQuickActionItem[] {
+  return [
+    {
+      label: 'Create Knowledge Base',
+      href: '/admin/knowledge-bases',
+      description: 'Create, manage, and configure knowledge bases.',
+    },
+    {
+      label: 'Manage Users',
+      href: '/admin/users',
+      description: 'View all users, change global roles, and assign category-level permissions.',
+    },
+    {
+      label: 'Create API Key',
+      href: '/admin/api-keys',
+      description: 'Create, view, and revoke API keys for RAG integrations.',
+    },
+  ];
 }
 
 export function getAdminNavSections(input: AdminNavInput): AdminNavSection[] {
