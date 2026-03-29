@@ -3,11 +3,13 @@
 ## Project Overview
 
 - Dovetail is a TypeScript monorepo for a legal knowledge base.
-- The local stack has three Docker services: `postgres`, `api`, and `web`.
+- The full Docker stack has three services: `postgres`, `api`, and `web`.
+- The default local debugging workflow is hybrid: run `postgres` in Docker and run the app processes locally with watch mode.
 - The frontend lives in `apps/web` and uses Next.js 15 App Router with React 19.
 - The backend lives in `apps/api` and uses Express 5.
 - The ORM and schema layer lives in `packages/db` and uses Drizzle.
 - Shared types live in `packages/types`.
+- Local development expects Node 20+, pnpm 9+, and `just`.
 
 ## Working Priorities
 
@@ -27,9 +29,14 @@
 
 ## Repo Guidance
 
-- For local development, prefer starting only what is needed. Common pattern: start `postgres` via Docker, then run the app processes with the repo's dev scripts.
+- For local development, prefer starting only what is needed. The common fast path is `just setup` once, then `just dev` for day-to-day work.
+- `just dev` starts `postgres` in Docker, reapplies migrations, reseeds the database, and runs the workspace `dev` processes with watch mode.
+- Use `just doctor` to verify local prerequisites and `just db-reset` to return Postgres to a known-good seeded state.
+- Use `just smoke` for a repeatable read-only local smoke test after changes. Use `just smoke-ai` only when the change depends on embeddings or RAG behavior.
 - Web usually runs on `http://localhost:3000` and API on `http://localhost:3001` in local development.
+- Local debugging usually does not require external OAuth setup. `.env.example` enables `DEV_AUTH_ENABLED=true`, and `/login` exposes seeded `Local Admin`, `Local Editor`, and `Local Viewer` identities.
 - Database changes should be handled through the Drizzle workflow already used in `packages/db`.
+- When you need container-level behavior rather than the faster hybrid loop, use `just stack` or `just stack-logs`.
 - When debugging cross-service issues, verify whether the failure is in `web`, `api`, database access, or service-to-service configuration before editing code.
 
 ## Expectations For Codex
