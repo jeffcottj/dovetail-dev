@@ -143,6 +143,17 @@ export const apiKeys = pgTable('api_keys', {
   revokedAt: timestamp('revoked_at'),
 });
 
+export const adminActivityEvents = pgTable('admin_activity_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  kind: text('kind').notNull(),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  knowledgeBaseId: uuid('knowledge_base_id').references(() => knowledgeBases.id, { onDelete: 'set null' }),
+  subjectId: text('subject_id').notNull(),
+  subjectLabel: text('subject_label').notNull(),
+  metadata: jsonb('metadata').notNull().default({}),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export const apiKeyKnowledgeBases = pgTable(
   'api_key_knowledge_bases',
   {
