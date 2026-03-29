@@ -232,6 +232,7 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
   const kbId = req.params.kbId as string | undefined;
 
   let result: any;
+  let didChange = false;
   try {
     await db.transaction(async (tx) => {
       // 1. Fetch current article
@@ -276,6 +277,18 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
           res.status(403).json({ error: 'Forbidden' });
           return;
         }
+      }
+
+      const nextTitle = req.body.title ?? current.title;
+      const nextCategoryId = req.body.categoryId ?? current.categoryId;
+      const nextContent = req.body.content ?? current.content;
+      const isNoOp = nextTitle === current.title
+        && nextCategoryId === current.categoryId
+        && JSON.stringify(nextContent) === JSON.stringify(current.content);
+
+      if (isNoOp) {
+        result = current;
+        return;
       }
 
       // 3. Compute next version number
@@ -323,6 +336,7 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
         throw new Error(ARTICLE_UPDATE_NOT_FOUND);
       }
 
+      didChange = true;
       result = updated;
       const [updatedCategory] = await tx.select({ knowledgeBaseId: categories.knowledgeBaseId })
         .from(categories)
@@ -346,7 +360,9 @@ articlesRouter.patch('/:id', authMiddleware, requireRole('editor'), validateBody
   }
 
   if (!res.headersSent) {
-    void generateEmbeddings(id).catch(err => console.error('Embedding generation failed:', err));
+    if (didChange) {
+      void generateEmbeddings(id).catch(err => console.error('Embedding generation failed:', err));
+    }
     res.json(result);
   }
 });

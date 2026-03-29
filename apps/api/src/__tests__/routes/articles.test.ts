@@ -386,6 +386,37 @@ describe('Article routes', () => {
       expect(tx!.insert).not.toHaveBeenCalled();
       expect(tx!.update).not.toHaveBeenCalled();
     });
+
+    it('returns the current article without versioning or activity for a no-op patch', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn(),
+          update: vi.fn(),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: mockArticle.title, categoryId: mockArticle.categoryId, content: mockArticle.content });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(ART_ID);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('DELETE /api/knowledge-bases/kb-1/articles/:id', () => {

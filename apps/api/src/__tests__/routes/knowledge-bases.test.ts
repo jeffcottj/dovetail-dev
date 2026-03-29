@@ -187,7 +187,35 @@ describe('Knowledge Base routes', () => {
       expect(tx!.delete).not.toHaveBeenCalled();
     });
 
-    it('deletes KB when only import jobs exist and cleans up history', async () => {
+    it('returns 409 when KB has an active import job', async () => {
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 1 }])),
+          insert: vi.fn(),
+          delete: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes KB when only completed or failed import history exists and cleans up history', async () => {
       let tx: {
         select: ReturnType<typeof vi.fn>;
         insert: ReturnType<typeof vi.fn>;
@@ -203,6 +231,7 @@ describe('Knowledge Base routes', () => {
         tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
             .mockReturnValueOnce(createChain([{ count: 0 }]))
             .mockReturnValueOnce(createChain([{ count: 0 }])),
           insert: vi.fn().mockReturnValueOnce(activityInsert),
@@ -235,6 +264,7 @@ describe('Knowledge Base routes', () => {
         const tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
             .mockReturnValueOnce(createChain([{ count: 0 }]))
             .mockReturnValueOnce(createChain([{ count: 0 }])),
           insert: vi.fn().mockReturnValueOnce(activityInsert),

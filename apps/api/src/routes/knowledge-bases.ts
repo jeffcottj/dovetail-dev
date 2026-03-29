@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { adminActivityEvents, db, knowledgeBases, categories, importJobs, tags, userKbRoles } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
@@ -140,6 +140,19 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
       return;
     }
 
+    const [activeImportJobCount] = await tx
+      .select({ count: sql<number>`count(*)` })
+      .from(importJobs)
+      .where(and(
+        eq(importJobs.knowledgeBaseId, id),
+        inArray(importJobs.status, ['pending', 'running']),
+      ));
+
+    if (Number(activeImportJobCount.count) > 0) {
+      hasDependents = true;
+      return;
+    }
+
     await tx.delete(importJobs).where(eq(importJobs.knowledgeBaseId, id));
 
     if (kb) {
@@ -156,7 +169,7 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
   });
 
   if (hasDependents) {
-    res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories and tags first.' });
+    res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories, tags, and active import jobs first.' });
     return;
   }
 
