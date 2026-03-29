@@ -15,6 +15,20 @@ const createKeySchema = z.object({
   knowledgeBaseIds: z.array(z.string().uuid()).min(1),
 });
 
+function buildRevokedActivityRows(
+  actorId: string,
+  key: { id: string; name: string },
+  knowledgeBaseIds: string[],
+) {
+  return knowledgeBaseIds.map((knowledgeBaseId) => buildAdminActivityInsert({
+    kind: 'api_key.revoked',
+    actorId,
+    knowledgeBaseId,
+    subjectId: key.id,
+    subjectLabel: key.name,
+  }));
+}
+
 // POST /api/admin/api-keys — create a new API key (returns raw key once)
 apiKeysRouter.post('/', authMiddleware, requireRole('admin'), validateBody(createKeySchema), async (req: AuthRequest, res) => {
   const { name, knowledgeBaseIds } = req.body;
@@ -106,22 +120,38 @@ apiKeysRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: A
       .from(apiKeyKnowledgeBases)
       .where(eq(apiKeyKnowledgeBases.apiKeyId, id));
 
-    const activityRows = associatedKnowledgeBases.length > 0
-      ? associatedKnowledgeBases.map(({ knowledgeBaseId }) => buildAdminActivityInsert({
-        kind: 'api_key.revoked',
-        actorId: req.user!.id,
-        knowledgeBaseId,
-        subjectId: key.id,
-        subjectLabel: key.name,
-      }))
-      : [buildAdminActivityInsert({
-        kind: 'api_key.revoked',
-        actorId: req.user!.id,
-        subjectId: key.id,
-        subjectLabel: key.name,
-      })];
+    const associatedKnowledgeBaseIds = associatedKnowledgeBases.map(({ knowledgeBaseId }) => knowledgeBaseId);
+    const activityRows = buildRevokedActivityRows(req.user!.id, key, associatedKnowledgeBaseIds);
 
-    await tx.insert(adminActivityEvents).values(activityRows);
+    if (activityRows.length > 0) {
+      try {
+        await tx.insert(adminActivityEvents).values(activityRows);
+      } catch (err: any) {
+        if (err?.code !== '23503') {
+          throw err;
+        }
+
+        const survivingKnowledgeBases = await tx
+          .select({ knowledgeBaseId: apiKeyKnowledgeBases.knowledgeBaseId })
+          .from(apiKeyKnowledgeBases)
+          .where(eq(apiKeyKnowledgeBases.apiKeyId, id));
+        const survivingActivityRows = buildRevokedActivityRows(
+          req.user!.id,
+          key,
+          survivingKnowledgeBases.map(({ knowledgeBaseId }) => knowledgeBaseId),
+        );
+
+        if (survivingActivityRows.length > 0) {
+          try {
+            await tx.insert(adminActivityEvents).values(survivingActivityRows);
+          } catch (retryErr: any) {
+            if (retryErr?.code !== '23503') {
+              throw retryErr;
+            }
+          }
+        }
+      }
+    }
 
     return { outcome: 'revoked' as const };
   });

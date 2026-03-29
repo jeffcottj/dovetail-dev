@@ -347,6 +347,37 @@ describe('Knowledge Base routes', () => {
       expect(res.status).toBe(409);
       expect(tx!.delete).toHaveBeenCalledTimes(2);
     });
+
+    it('returns 404 when kb.deleted activity insert loses a race to a concurrent delete', async () => {
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
+      };
+      let importJobsDeleteChain: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        importJobsDeleteChain = createChain(undefined);
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 0 }]))
+            .mockReturnValueOnce(createChain([{ count: 0 }])),
+          insert: vi.fn().mockImplementationOnce(() => ({
+            values: vi.fn().mockRejectedValue({ code: '23503' }),
+          })),
+          delete: vi.fn().mockReturnValueOnce(importJobsDeleteChain),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(404);
+      expect(tx!.delete).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('KB User Role routes', () => {

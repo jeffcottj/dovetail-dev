@@ -11,6 +11,7 @@ import { toSlug } from '../utils/slug.js';
 
 export const knowledgeBasesRouter: Router = Router();
 const KNOWLEDGE_BASE_DELETE_CONFLICT = 'KNOWLEDGE_BASE_DELETE_CONFLICT';
+const KNOWLEDGE_BASE_DELETE_NOT_FOUND = 'KNOWLEDGE_BASE_DELETE_NOT_FOUND';
 
 const createKbSchema = z.object({
   name: z.string().min(1).max(200),
@@ -166,13 +167,20 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
         inArray(importJobs.status, ['completed', 'failed']),
       ));
 
-      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
-        kind: 'kb.deleted',
-        actorId: req.user!.id,
-        knowledgeBaseId: id,
-        subjectId: id,
-        subjectLabel: kb.name,
-      }));
+      try {
+        await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+          kind: 'kb.deleted',
+          actorId: req.user!.id,
+          knowledgeBaseId: id,
+          subjectId: id,
+          subjectLabel: kb.name,
+        }));
+      } catch (err: any) {
+        if (err?.code === '23503') {
+          throw new Error(KNOWLEDGE_BASE_DELETE_NOT_FOUND);
+        }
+        throw err;
+      }
 
       try {
         await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
@@ -184,6 +192,10 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
       }
     });
   } catch (err: any) {
+    if (err.message === KNOWLEDGE_BASE_DELETE_NOT_FOUND) {
+      res.status(404).json({ error: 'Knowledge base not found' });
+      return;
+    }
     if (err.message === KNOWLEDGE_BASE_DELETE_CONFLICT) {
       res.status(409).json({ error: 'Cannot delete knowledge base with dependent records. Remove categories, tags, and active import jobs first.' });
       return;
