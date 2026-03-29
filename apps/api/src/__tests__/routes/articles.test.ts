@@ -116,7 +116,8 @@ describe('Article routes', () => {
     it('returns a single article', async () => {
       (db.select as Mock)
         .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(createChain([mockArticle]));
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
 
       const res = await supertest(app)
         .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
@@ -124,6 +125,19 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(ART_ID);
+    });
+
+    it('returns 404 when the article belongs to another knowledge base', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }]));
+
+      const res = await supertest(app)
+        .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(404);
     });
 
     it('returns 404 when not found', async () => {

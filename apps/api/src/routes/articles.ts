@@ -178,6 +178,19 @@ articlesRouter.get('/:id', authMiddleware, async (req, res) => {
     res.status(404).json({ error: 'Article not found' });
     return;
   }
+
+  const kbId = req.params.kbId as string | undefined;
+  if (kbId) {
+    const [category] = await db.select({ knowledgeBaseId: categories.knowledgeBaseId })
+      .from(categories)
+      .where(eq(categories.id, article.categoryId));
+
+    if (category?.knowledgeBaseId !== kbId) {
+      res.status(404).json({ error: 'Article not found' });
+      return;
+    }
+  }
+
   const categoryPath = await buildCategoryPath(article.categoryId);
   res.json({ ...article, categoryPath });
 });
