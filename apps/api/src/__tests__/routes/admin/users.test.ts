@@ -19,7 +19,7 @@ vi.mock('@dovetail/db', async (importOriginal) => {
 });
 
 import { app } from '../../../app.js';
-import { adminActivityEvents, db } from '@dovetail/db';
+import { adminActivityEvents, db, users } from '@dovetail/db';
 import { buildAdminActivityInsert } from '../../../services/admin-activity.js';
 
 describe('Admin user routes', () => {
@@ -57,6 +57,25 @@ describe('Admin user routes', () => {
       expect(res.body.data).toHaveLength(1);
       expect(res.body.total).toBe(1);
       expect(res.body.data[0].name).toBe('Alice');
+    });
+
+    it('orders paginated users deterministically when createdAt ties', async () => {
+      const countQuery = createChain([{ count: 2 }]);
+      const dataQuery = createChain([
+        { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() },
+        { id: 'u2', email: 'b@b.com', name: 'Bob', role: 'viewer', provider: 'google', createdAt: new Date() },
+      ]);
+
+      (db.select as Mock)
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(dataQuery);
+
+      const res = await supertest(app)
+        .get('/api/admin/users?page=2&limit=1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(dataQuery.orderBy).toHaveBeenCalledWith(users.createdAt, users.id);
     });
   });
 

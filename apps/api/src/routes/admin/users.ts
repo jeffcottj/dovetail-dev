@@ -39,7 +39,7 @@ adminUsersRouter.get('/', authMiddleware, requireRole('admin'), validateQuery(pa
       createdAt: users.createdAt,
     })
     .from(users)
-    .orderBy(users.createdAt)
+    .orderBy(users.createdAt, users.id)
     .limit(limit)
     .offset(offset);
 
