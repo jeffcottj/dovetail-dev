@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { adminActivityEvents, db, articles, articleVersions, categories } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { buildAdminActivityInsert } from '../services/admin-activity.js';
@@ -29,12 +29,18 @@ function buildArticleCurrentStatePredicate(current: {
   title: string;
   categoryId: string;
   content: unknown;
+  status: 'draft' | 'published' | 'archived';
+  publishedAt: Date | null;
 }) {
   return and(
     eq(articles.id, current.id),
     eq(articles.categoryId, current.categoryId),
     eq(articles.title, current.title),
     eq(articles.content, current.content as Record<string, unknown>),
+    eq(articles.status, current.status),
+    current.publishedAt === null
+      ? isNull(articles.publishedAt)
+      : eq(articles.publishedAt, current.publishedAt),
   );
 }
 

@@ -48,6 +48,35 @@ const mockArticle = {
 
 const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
 
+function predicateReferencesColumn(
+  value: unknown,
+  columnName: string,
+  seen = new WeakSet<object>(),
+): boolean {
+  if (Array.isArray(value)) {
+    return value.some(entry => predicateReferencesColumn(entry, columnName, seen));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if ('name' in value && value.name === columnName) {
+    return true;
+  }
+
+  if ('queryChunks' in value && Array.isArray(value.queryChunks)) {
+    return value.queryChunks.some(chunk => predicateReferencesColumn(chunk, columnName, seen));
+  }
+
+  return false;
+}
+
 describe('Article routes', () => {
   let viewerToken: string;
   let editorToken: string;
@@ -407,6 +436,50 @@ describe('Article routes', () => {
             .mockReturnValueOnce(createChain([{ max: 0 }])),
           insert: vi.fn(),
           update: vi.fn().mockReturnValue(createChain([])),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Updated Title' });
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when a concurrent publish changes lifecycle state before patch update', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ max: 0 }]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn()
+            .mockReturnValueOnce(createChain([]))
+            .mockReturnValueOnce(createChain([{ id: 'evt-article-edit-race' }])),
+          update: vi.fn().mockImplementation(() => ({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockImplementation((condition: unknown) => ({
+                returning: vi.fn().mockResolvedValue(
+                  predicateReferencesColumn(condition, 'status')
+                    && predicateReferencesColumn(condition, 'published_at')
+                    ? []
+                    : [{ ...mockArticle, title: 'Updated Title' }],
+                ),
+              })),
+            }),
+          })),
         };
         return fn(tx);
       });
