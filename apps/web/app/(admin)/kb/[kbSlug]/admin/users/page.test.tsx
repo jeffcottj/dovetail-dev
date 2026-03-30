@@ -16,6 +16,10 @@ const mockKbUserManager = vi.fn(
   ),
 );
 
+vi.mock('../../../../../../auth', () => ({
+  auth: vi.fn().mockResolvedValue({ user: { role: 'admin' } }),
+}));
+
 vi.mock('../../../../../../lib/kb', () => ({
   getKbBySlug: vi.fn(),
 }));

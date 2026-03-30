@@ -3,7 +3,7 @@ import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AdminNav } from '../../components/admin/AdminNav';
 import { AdminWorkspaceLayout } from '../../components/admin/AdminWorkspaceLayout';
-import { buildGlobalAdminActions, buildKbAdminActions, getAdminNavSections } from './nav';
+import { getAdminNavSections } from './nav';
 
 // Vitest executes this route module with a classic JSX transform, so the page
 // expects a global React binding at runtime.
@@ -49,50 +49,24 @@ function collectText(node: ReactNode): string {
 }
 
 describe('getAdminNavSections', () => {
-  it('returns global and KB sections when a KB context is present', () => {
+  it('returns a single KB section when a KB context is present', () => {
     const sections = getAdminNavSections({
       pathname: '/kb/housing/admin/users',
       kb: { slug: 'housing', name: 'Housing' },
     });
 
-    expect(sections).toHaveLength(2);
-    expect(sections[0].label).toBe('Global Admin');
+    expect(sections).toHaveLength(1);
+    expect(sections[0].label).toBe('Housing');
     expect(sections[0].items).toMatchObject([
-      { label: 'Overview', href: '/admin', active: false },
-      { label: 'Users', href: '/admin/users', active: false },
-      { label: 'Knowledge Bases', href: '/admin/knowledge-bases', active: false },
-      { label: 'API Keys', href: '/admin/api-keys', active: false },
-    ]);
-    expect(sections[1].label).toBe('Housing');
-    expect(sections[1].items).toMatchObject([
       { label: 'KB Overview', href: '/kb/housing/admin', active: false },
       { label: 'Users & Roles', href: '/kb/housing/admin/users', active: true },
       { label: 'Tags', href: '/kb/housing/admin/tags', active: false },
       { label: 'Import', href: '/kb/housing/admin/import', active: false },
+      { label: 'Recent Activity', href: '/kb/housing/admin/activity', active: false },
     ]);
   });
 });
 
-describe('buildGlobalAdminActions', () => {
-  it('returns the global admin quick actions', () => {
-    expect(buildGlobalAdminActions()).toEqual([
-      expect.objectContaining({ label: 'Create Knowledge Base', href: '/admin/knowledge-bases' }),
-      expect.objectContaining({ label: 'Manage Users', href: '/admin/users' }),
-      expect.objectContaining({ label: 'Create API Key', href: '/admin/api-keys' }),
-    ]);
-  });
-});
-
-describe('buildKbAdminActions', () => {
-  it('returns KB-scoped admin quick actions', () => {
-    expect(buildKbAdminActions({ slug: 'housing' })).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ href: '/kb/housing/admin/users' }),
-        expect.objectContaining({ href: '/kb/housing/admin/import' }),
-      ]),
-    );
-  });
-});
 
 describe('Admin nav shell', () => {
   it('marks the current route and uses a stacked shell on narrow screens', () => {
@@ -100,7 +74,7 @@ describe('Admin nav shell', () => {
       pathname: '/admin/users',
     });
 
-    const nav = AdminNav({ sections });
+    const nav = AdminNav({ sections, isGlobalAdmin: true, currentKbSlug: null });
     const navElements = collectElements(nav);
     const activeLinks = navElements.filter(
       (node) => node.type === 'a' && node.props.href === '/admin/users' && node.props['aria-current'] === 'page',
@@ -112,14 +86,11 @@ describe('Admin nav shell', () => {
     expect(desktopRail?.props.className).toContain('lg:w-72');
 
     const workspace = AdminWorkspaceLayout({
-      nav: { sections },
+      nav: { sections, isGlobalAdmin: true, currentKbSlug: null },
       header: {
         title: 'Admin Overview',
-        description: 'System-wide operations and access control.',
       },
       metrics: [],
-      actions: [],
-      activity: [],
       children: React.createElement('div'),
     });
 
@@ -133,7 +104,7 @@ describe('Admin nav shell', () => {
       kb: { slug: 'housing', name: 'Housing' },
     });
 
-    const nav = AdminNav({ sections });
+    const nav = AdminNav({ sections, isGlobalAdmin: true, currentKbSlug: 'housing', currentKbName: 'Housing' });
     const elements = collectElements(nav);
     const mobileDisclosure = elements.find((node) => node.type === 'details');
     const mobileSummary = elements.find((node) => node.type === 'summary');

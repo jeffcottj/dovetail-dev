@@ -8,6 +8,10 @@ import { fetchKbAdminOverview } from '../../../../../lib/admin/kb-workspace';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).React = React;
 
+vi.mock('../../../../../auth', () => ({
+  auth: vi.fn().mockResolvedValue({ user: { role: 'admin' } }),
+}));
+
 vi.mock('../../../../../lib/kb', () => ({
   getKbBySlug: vi.fn(),
 }));
@@ -75,21 +79,16 @@ describe('KbAdminPage', () => {
       title: 'KB Overview',
       scopeLabel: 'Housing',
     });
-    expect(tree.props.nav.sections[1].label).toBe('Housing');
-    expect(tree.props.actions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ href: '/kb/housing/admin/users' }),
-        expect.objectContaining({ href: '/kb/housing/admin/import' }),
-      ]),
-    );
+    expect(tree.props.nav.sections[0].label).toBe('Housing');
+    expect(tree.props.nav.isGlobalAdmin).toBe(true);
+    expect(tree.props.nav.currentKbSlug).toBe('housing');
+    expect(tree.props.nav.currentKbName).toBe('Housing');
     expect(tree.props.metrics).toMatchObject([
       { label: 'KB Users', value: 3 },
       { label: 'Tags', value: 9 },
       { label: 'Imports', value: 2 },
       { label: 'Recent Article Activity', value: 4 },
     ]);
-    expect(tree.props.activity).toHaveLength(1);
-    expect(tree.props.activityUnavailableMessage).toBeNull();
     expect(collectText(tree.props.children)).toContain('Housing currently has 3 KB role overrides');
   });
 
@@ -112,12 +111,10 @@ describe('KbAdminPage', () => {
     const tree = await KbAdminPage({ params: Promise.resolve({ kbSlug: 'housing' }) });
     const text = collectText(tree.props.children);
 
-    expect(tree.props.nav.sections[1].label).toBe('Housing');
+    expect(tree.props.nav.sections[0].label).toBe('Housing');
+    expect(tree.props.nav.isGlobalAdmin).toBe(true);
+    expect(tree.props.nav.currentKbSlug).toBe('housing');
     expect(tree.props.metrics).toEqual([]);
-    expect(tree.props.activity).toEqual([]);
-    expect(tree.props.activityUnavailableMessage).toBe(
-      'Knowledge base admin overview is temporarily unavailable. API error: 500 Internal Server Error',
-    );
     expect(text).toContain('Overview unavailable');
     expect(text).toContain('Knowledge base admin overview is temporarily unavailable. API error: 500 Internal Server Error');
   });
