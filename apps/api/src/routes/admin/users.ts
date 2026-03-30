@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { adminActivityEvents, db, users, userCategoryRoles, categories } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -19,16 +19,25 @@ const assignCategoryRoleSchema = z.object({
   role: z.enum(['viewer', 'editor', 'admin']),
 });
 
-// GET /api/admin/users — list users (paginated)
-adminUsersRouter.get('/', authMiddleware, requireRole('admin'), validateQuery(paginationSchema), async (_req, res) => {
-  const { page, limit } = res.locals.query as z.infer<typeof paginationSchema>;
-  const offset = (page - 1) * limit;
+const userListSchema = paginationSchema.extend({
+  search: z.string().optional(),
+});
 
-  const [{ count: total }] = await db
+// GET /api/admin/users — list users (paginated, searchable)
+adminUsersRouter.get('/', authMiddleware, requireRole('admin'), validateQuery(userListSchema), async (_req, res) => {
+  const { page, limit, search } = res.locals.query as z.infer<typeof userListSchema>;
+  const offset = (page - 1) * limit;
+  const trimmedSearch = search?.trim();
+  const whereClause = trimmedSearch
+    ? or(ilike(users.name, `%${trimmedSearch}%`), ilike(users.email, `%${trimmedSearch}%`))
+    : undefined;
+
+  const countQuery = db
     .select({ count: sql<number>`count(*)` })
     .from(users);
+  const [{ count: total }] = await (whereClause ? countQuery.where(whereClause) : countQuery);
 
-  const data = await db
+  const dataQuery = db
     .select({
       id: users.id,
       email: users.email,
@@ -38,7 +47,9 @@ adminUsersRouter.get('/', authMiddleware, requireRole('admin'), validateQuery(pa
       provider: users.provider,
       createdAt: users.createdAt,
     })
-    .from(users)
+    .from(users);
+  const filteredDataQuery = whereClause ? dataQuery.where(whereClause) : dataQuery;
+  const data = await filteredDataQuery
     .orderBy(users.createdAt, users.id)
     .limit(limit)
     .offset(offset);

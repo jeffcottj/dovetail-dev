@@ -66,16 +66,17 @@ vi.mock('next/link', () => ({
   },
 }));
 
-function collectElements(node: ReactNode, elements: ReactElement[] = []) {
+function collectElements(node: ReactNode, elements: ReactElement<any>[] = []) {
   if (Array.isArray(node)) {
-    node.forEach((child) => collectElements(child, elements));
+    node.forEach((child: ReactNode) => collectElements(child, elements));
     return elements;
   }
 
   if (!isValidElement(node)) return elements;
 
-  elements.push(node);
-  collectElements(node.props?.children, elements);
+  const el = node as ReactElement<any>;
+  elements.push(el);
+  collectElements(el.props?.children, elements);
   return elements;
 }
 
@@ -89,7 +90,7 @@ describe('KbLayout', () => {
     const element = await KbLayout({
       children: <div data-testid="page-body" />,
       params: Promise.resolve({ kbSlug: 'default' }),
-    });
+    }) as ReactElement<any>;
 
     expect(element.type).toBe(KbProvider);
 
@@ -97,10 +98,10 @@ describe('KbLayout', () => {
       ? element.props.children
       : [element.props.children];
     const sidebarColumn = topLevelChildren.find(
-      (node) => node.type === mockSidebarWrapper,
+      (node: ReactElement<any>) => node.type === mockSidebarWrapper,
     );
     const contentColumn = topLevelChildren.find(
-      (node) =>
+      (node: ReactElement<any>) =>
         node.type === 'div' &&
         typeof node.props.className === 'string' &&
         node.props.className.includes('flex-1 flex flex-col'),
@@ -121,9 +122,10 @@ describe('KbLayout', () => {
     expect(mainContent?.props?.children?.props?.['data-testid']).toBe('page-body');
 
     const headerElements = collectElements(header?.props.children);
-    const roleGate = headerElements.find((node) => node.type.name === 'RoleGate');
-    const searchBar = headerElements.find((node) => node.type.name === 'SearchBar');
-    const headerUserArea = headerElements.find((node) => node.type.name === 'HeaderUserArea');
+    const typeName = (node: ReactElement<any>) => typeof node.type === 'function' ? (node.type as Function).name : '';
+    const roleGate = headerElements.find((node) => typeName(node) === 'RoleGate');
+    const searchBar = headerElements.find((node) => typeName(node) === 'SearchBar');
+    const headerUserArea = headerElements.find((node) => typeName(node) === 'HeaderUserArea');
     const newArticleLink = headerElements.find(
       (node) => node.props?.href === '/kb/default/articles/new',
     );
@@ -146,11 +148,11 @@ describe('KbLayout', () => {
     const searchBarWrapper = leftSideChildren?.[1];
 
     expect(searchBarWrapper?.type).toBe(Suspense);
-    expect(searchBarWrapper?.props.children?.type.name).toBe('SearchBar');
-    expect(rightSide?.type.name).toBe('HeaderUserArea');
+    expect(typeName(searchBarWrapper?.props.children)).toBe('SearchBar');
+    expect(typeName(rightSide)).toBe('HeaderUserArea');
 
     const linkChildren = collectElements(newArticleLink?.props.children);
-    const button = linkChildren.find((node) => node.type.name === 'Button');
+    const button = linkChildren.find((node) => typeName(node) === 'Button');
 
     expect(button).toBeDefined();
     expect(button?.props.children).toEqual(

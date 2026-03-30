@@ -77,6 +77,45 @@ describe('Admin user routes', () => {
       expect(res.status).toBe(200);
       expect(dataQuery.orderBy).toHaveBeenCalledWith(users.createdAt, users.id);
     });
+
+    it('applies a search filter to both count and data queries when provided', async () => {
+      const countQuery = createChain([{ count: 1 }]);
+      const dataQuery = createChain([
+        { id: 'u1', email: 'alice@example.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() },
+      ]);
+
+      (db.select as Mock)
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(dataQuery);
+
+      const res = await supertest(app)
+        .get('/api/admin/users?search=alice')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(countQuery.where).toHaveBeenCalledTimes(1);
+      expect(dataQuery.where).toHaveBeenCalledTimes(1);
+      expect(res.body.data[0].email).toBe('alice@example.com');
+    });
+
+    it('treats blank search as no filter', async () => {
+      const countQuery = createChain([{ count: 1 }]);
+      const dataQuery = createChain([
+        { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() },
+      ]);
+
+      (db.select as Mock)
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(dataQuery);
+
+      const res = await supertest(app)
+        .get('/api/admin/users?search=   ')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(countQuery.where).not.toHaveBeenCalled();
+      expect(dataQuery.where).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /api/admin/users/:id', () => {

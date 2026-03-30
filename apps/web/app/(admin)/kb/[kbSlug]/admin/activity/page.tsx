@@ -1,8 +1,7 @@
 import { notFound } from 'next/navigation';
 import { auth } from '../../../../../../auth';
 import { AdminWorkspaceLayout } from '../../../../../../components/admin/AdminWorkspaceLayout';
-import ImportWizard from '../../../../../../components/ImportWizard';
-import { Card } from '../../../../../../components/ui/Card';
+import { AdminActivityFeed } from '../../../../../../components/admin/AdminActivityFeed';
 import { getAdminNavSections } from '../../../../../../lib/admin/nav';
 import {
   buildKbAdminMetrics,
@@ -11,7 +10,7 @@ import {
 } from '../../../../../../lib/admin/kb-workspace';
 import { getKbBySlug } from '../../../../../../lib/kb';
 
-export default async function KbImportPage({ params }: { params: Promise<{ kbSlug: string }> }) {
+export default async function KbActivityPage({ params }: { params: Promise<{ kbSlug: string }> }) {
   const { kbSlug } = await params;
   const kb = await getKbBySlug(kbSlug);
   if (!kb) notFound();
@@ -27,7 +26,7 @@ export default async function KbImportPage({ params }: { params: Promise<{ kbSlu
     <AdminWorkspaceLayout
       nav={{
         sections: getAdminNavSections({
-          pathname: `/kb/${kbContext.slug}/admin/import`,
+          pathname: `/kb/${kbContext.slug}/admin/activity`,
           kb: { slug: kbContext.slug, name: kbContext.name },
         }),
         isGlobalAdmin,
@@ -35,22 +34,15 @@ export default async function KbImportPage({ params }: { params: Promise<{ kbSlu
         currentKbName: kbContext.name,
       }}
       header={{
-        title: 'Import',
+        title: 'Recent Activity',
         scopeLabel: kbContext.name,
       }}
       metrics={overview.ok ? buildKbAdminMetrics(overview) : []}
     >
-      <section className="space-y-4">
-        {overviewWarning ? (
-          <Card className="border-warning/40 bg-warning/10">
-            <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-warning">
-              Overview unavailable
-            </p>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
-          </Card>
-        ) : null}
-        <ImportWizard kbId={kbContext.id} />
-      </section>
+      <AdminActivityFeed
+        items={overview.ok ? overview.activity : []}
+        unavailableMessage={overviewWarning}
+      />
     </AdminWorkspaceLayout>
   );
 }

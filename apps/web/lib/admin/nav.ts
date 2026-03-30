@@ -1,5 +1,3 @@
-import type { AdminQuickActionItem } from '../../components/admin/AdminQuickActions';
-
 export interface AdminNavItem {
   label: string;
   href: string;
@@ -19,77 +17,36 @@ export interface AdminNavInput {
   } | null;
 }
 
-export function buildGlobalAdminActions(): AdminQuickActionItem[] {
-  return [
-    {
-      label: 'Create Knowledge Base',
-      href: '/admin/knowledge-bases',
-      description: 'Create, manage, and configure knowledge bases.',
-    },
-    {
-      label: 'Manage Users',
-      href: '/admin/users',
-      description: 'View all users, change global roles, and assign category-level permissions.',
-    },
-    {
-      label: 'Create API Key',
-      href: '/admin/api-keys',
-      description: 'Create, view, and revoke API keys for RAG integrations.',
-    },
-  ];
-}
-
-export function buildKbAdminActions(input: { slug: string }): AdminQuickActionItem[] {
-  return [
-    {
-      label: 'Manage KB Users',
-      href: `/kb/${input.slug}/admin/users`,
-      description: 'Review KB-specific role overrides and adjust local access.',
-    },
-    {
-      label: 'Manage Tags',
-      href: `/kb/${input.slug}/admin/tags`,
-      description: 'Create and retire tags used to organize this knowledge base.',
-    },
-    {
-      label: 'Import Content',
-      href: `/kb/${input.slug}/admin/import`,
-      description: 'Preview uploads and run imports for this knowledge base.',
-    },
-  ];
-}
-
 export function getAdminNavSections(input: AdminNavInput): AdminNavSection[] {
   const pathname = input.pathname.replace(/\/+$/, '') || '/';
   const isExact = (href: string) => pathname === href;
   const isDescendant = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-  const globalItems: AdminNavItem[] = [
-    { label: 'Overview', href: '/admin', active: isExact('/admin') },
-    { label: 'Users', href: '/admin/users', active: isDescendant('/admin/users') },
-    { label: 'Knowledge Bases', href: '/admin/knowledge-bases', active: isExact('/admin/knowledge-bases') },
-    { label: 'API Keys', href: '/admin/api-keys', active: isExact('/admin/api-keys') },
-  ];
-
-  const kbItems = input.kb
-    ? [
-        {
-          label: 'KB Overview',
-          href: `/kb/${input.kb.slug}/admin`,
-          active: isExact(`/kb/${input.kb.slug}/admin`),
-        },
-        {
-          label: 'Users & Roles',
-          href: `/kb/${input.kb.slug}/admin/users`,
-          active: isDescendant(`/kb/${input.kb.slug}/admin/users`),
-        },
-        { label: 'Tags', href: `/kb/${input.kb.slug}/admin/tags`, active: isExact(`/kb/${input.kb.slug}/admin/tags`) },
-        { label: 'Import', href: `/kb/${input.kb.slug}/admin/import`, active: isExact(`/kb/${input.kb.slug}/admin/import`) },
-      ]
-    : [];
+  if (input.kb) {
+    return [
+      {
+        label: input.kb.name,
+        items: [
+          { label: 'KB Overview', href: `/kb/${input.kb.slug}/admin`, active: isExact(`/kb/${input.kb.slug}/admin`) },
+          { label: 'Users & Roles', href: `/kb/${input.kb.slug}/admin/users`, active: isDescendant(`/kb/${input.kb.slug}/admin/users`) },
+          { label: 'Tags', href: `/kb/${input.kb.slug}/admin/tags`, active: isExact(`/kb/${input.kb.slug}/admin/tags`) },
+          { label: 'Import', href: `/kb/${input.kb.slug}/admin/import`, active: isExact(`/kb/${input.kb.slug}/admin/import`) },
+          { label: 'Recent Activity', href: `/kb/${input.kb.slug}/admin/activity`, active: isExact(`/kb/${input.kb.slug}/admin/activity`) },
+        ],
+      },
+    ];
+  }
 
   return [
-    { label: 'Global Admin', items: globalItems },
-    ...(kbItems.length > 0 ? [{ label: input.kb!.name, items: kbItems }] : []),
+    {
+      label: 'Global Admin',
+      items: [
+        { label: 'Overview', href: '/admin', active: isExact('/admin') },
+        { label: 'Users', href: '/admin/users', active: isDescendant('/admin/users') },
+        { label: 'Knowledge Bases', href: '/admin/knowledge-bases', active: isExact('/admin/knowledge-bases') },
+        { label: 'API Keys', href: '/admin/api-keys', active: isExact('/admin/api-keys') },
+        { label: 'Recent Activity', href: '/admin/activity', active: isExact('/admin/activity') },
+      ],
+    },
   ];
 }
