@@ -34,7 +34,7 @@ function collectElements(node: ReactNode, elements: ReactElement<any>[] = []) {
   const element = node as ReactElement<any>;
   elements.push(element);
   if (typeof element.type === 'function') {
-    collectElements(element.type(element.props), elements);
+    collectElements((element.type as Function)(element.props), elements);
   }
   collectElements(element.props?.children, elements);
   return elements;
@@ -45,7 +45,7 @@ function collectText(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(collectText).join('');
   if (!isValidElement(node)) return '';
-  return collectText(node.props?.children);
+  return collectText((node.props as Record<string, unknown>)?.children as ReactNode);
 }
 
 describe('getAdminNavSections', () => {

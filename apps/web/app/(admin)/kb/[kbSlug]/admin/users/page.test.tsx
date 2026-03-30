@@ -47,8 +47,8 @@ function collectText(node: React.ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(collectText).join('');
   if (React.isValidElement(node)) {
-    if (typeof node.type === 'function') return collectText(node.type(node.props));
-    return collectText(node.props.children);
+    if (typeof node.type === 'function') return collectText((node.type as Function)(node.props));
+    return collectText((node.props as Record<string, unknown>).children as React.ReactNode);
   }
   return '';
 }

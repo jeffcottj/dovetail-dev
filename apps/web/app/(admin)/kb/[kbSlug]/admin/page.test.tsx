@@ -30,7 +30,7 @@ function collectText(node: React.ReactNode): string {
   if (node == null || typeof node === 'boolean') return '';
   if (typeof node === 'string' || typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(collectText).join('');
-  if (React.isValidElement(node)) return collectText(node.props.children);
+  if (React.isValidElement(node)) return collectText((node.props as Record<string, unknown>).children as React.ReactNode);
   return '';
 }
 
