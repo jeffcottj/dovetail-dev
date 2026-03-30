@@ -3,9 +3,12 @@ import type { AdminNavSection } from '../../lib/admin/nav';
 
 interface AdminNavProps {
   sections: AdminNavSection[];
+  isGlobalAdmin: boolean;
+  currentKbSlug: string | null;
+  currentKbName?: string;
 }
 
-function AdminNavSections({ sections }: AdminNavProps) {
+function AdminNavSections({ sections }: { sections: AdminNavSection[] }) {
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1 lg:gap-6">
       {sections.map((section) => (
@@ -35,7 +38,7 @@ function AdminNavSections({ sections }: AdminNavProps) {
   );
 }
 
-export function AdminNav({ sections }: AdminNavProps) {
+export function AdminNav({ sections, isGlobalAdmin, currentKbSlug, currentKbName }: AdminNavProps) {
   return (
     <>
       <details className="border-b border-[color:rgba(255,255,255,0.12)] bg-[color:var(--color-admin-rail)] text-white lg:hidden">

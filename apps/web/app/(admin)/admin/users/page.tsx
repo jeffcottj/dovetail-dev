@@ -2,7 +2,7 @@ import { auth } from '../../../../auth';
 import { redirect } from 'next/navigation';
 import { AdminWorkspaceLayout } from '../../../../components/admin/AdminWorkspaceLayout';
 import { Card } from '../../../../components/ui/Card';
-import { buildGlobalAdminActions, getAdminNavSections } from '../../../../lib/admin/nav';
+import { getAdminNavSections } from '../../../../lib/admin/nav';
 import {
   buildGlobalAdminMetrics,
   fetchGlobalAdminOverview,
@@ -34,32 +34,22 @@ export default async function AdminUsersPage() {
 
   const overview = await fetchGlobalAdminOverview();
   const overviewWarning = getGlobalAdminOverviewWarning(overview);
-
   const usersResult = await fetchAdminResource<PaginatedUsers>('/api/admin/users?limit=100');
 
   return (
     <AdminWorkspaceLayout
-      nav={{ sections: getAdminNavSections({ pathname: '/admin/users' }) }}
+      nav={{
+        sections: getAdminNavSections({ pathname: '/admin/users' }),
+        isGlobalAdmin: true,
+        currentKbSlug: null,
+      }}
       header={{
         title: 'Users',
-        description: 'View all users, change global roles, and assign category-level permissions.',
         scopeLabel: 'Global Admin',
       }}
       metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
-      actions={buildGlobalAdminActions()}
-      activity={overview.ok ? overview.activity : []}
-      activityUnavailableMessage={overviewWarning}
     >
       <section className="space-y-4">
-        <Card className="!bg-[color:var(--color-admin-panel)]">
-          <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-ink-muted">
-            User Directory
-          </p>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">
-            Review the current account list, update global roles, and click into a user to manage
-            category-level overrides.
-          </p>
-        </Card>
         {overviewWarning ? (
           <Card className="border-warning/40 bg-warning/10">
             <p className="font-[family-name:var(--font-ui)] text-xs uppercase tracking-[0.18em] text-warning">

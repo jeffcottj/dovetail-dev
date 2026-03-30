@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
+import { auth } from '../../../../../auth';
 import { AdminWorkspaceLayout } from '../../../../../components/admin/AdminWorkspaceLayout';
 import { Card } from '../../../../../components/ui/Card';
-import { buildKbAdminActions, getAdminNavSections } from '../../../../../lib/admin/nav';
+import { getAdminNavSections } from '../../../../../lib/admin/nav';
 import {
   buildKbAdminMetrics,
   buildKbAdminSummary,
@@ -15,6 +16,9 @@ export default async function KbAdminPage({ params }: { params: Promise<{ kbSlug
   const kb = await getKbBySlug(kbSlug);
   if (!kb) notFound();
 
+  const session = await auth();
+  const isGlobalAdmin = (session?.user as any)?.role === 'admin';
+
   const overview = await fetchKbAdminOverview(kb.id);
   const overviewWarning = getKbAdminOverviewWarning(overview);
   const kbContext = overview.ok ? overview.kb : kb;
@@ -26,16 +30,15 @@ export default async function KbAdminPage({ params }: { params: Promise<{ kbSlug
           pathname: `/kb/${kbContext.slug}/admin`,
           kb: { slug: kbContext.slug, name: kbContext.name },
         }),
+        isGlobalAdmin,
+        currentKbSlug: kbContext.slug,
+        currentKbName: kbContext.name,
       }}
       header={{
         title: 'KB Overview',
-        description: 'Monitor KB roles, tags, imports, and recent article activity for this knowledge base.',
         scopeLabel: kbContext.name,
       }}
       metrics={overview.ok ? buildKbAdminMetrics(overview) : []}
-      actions={buildKbAdminActions({ slug: kbContext.slug })}
-      activity={overview.ok ? overview.activity : []}
-      activityUnavailableMessage={overviewWarning}
     >
       {overview.ok ? (
         <Card className="!bg-[color:var(--color-admin-panel)]">
@@ -44,10 +47,6 @@ export default async function KbAdminPage({ params }: { params: Promise<{ kbSlug
           </p>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">
             {buildKbAdminSummary(overview)}
-          </p>
-          <p className="mt-4 max-w-3xl text-sm leading-6 text-ink-light">
-            Use the quick actions above to manage KB roles, curate tags, or start a new import.
-            The activity feed reflects the latest KB-scoped administrative changes.
           </p>
         </Card>
       ) : (

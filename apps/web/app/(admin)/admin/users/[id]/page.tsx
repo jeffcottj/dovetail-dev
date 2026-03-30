@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { AdminWorkspaceLayout } from '../../../../../components/admin/AdminWorkspaceLayout';
 import { Card } from '../../../../../components/ui/Card';
 import { Badge } from '../../../../../components/ui/Badge';
-import { buildGlobalAdminActions, getAdminNavSections } from '../../../../../lib/admin/nav';
+import { getAdminNavSections } from '../../../../../lib/admin/nav';
 import {
   buildGlobalAdminMetrics,
   fetchGlobalAdminOverview,
@@ -130,16 +130,16 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
 
   return (
     <AdminWorkspaceLayout
-      nav={{ sections: getAdminNavSections({ pathname: '/admin/users' }) }}
+      nav={{
+        sections: getAdminNavSections({ pathname: '/admin/users' }),
+        isGlobalAdmin: true,
+        currentKbSlug: null,
+      }}
       header={{
         title: userResult.ok ? userResult.data.name : 'User unavailable',
-        description: 'Review global access and category-level overrides for this user.',
         scopeLabel: 'Global Admin',
       }}
       metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
-      actions={buildGlobalAdminActions()}
-      activity={overview.ok ? overview.activity : []}
-      activityUnavailableMessage={overviewWarning}
     >
       <section className="space-y-6">
         <Link href="/admin/users" className="text-sm text-accent hover:underline font-[family-name:var(--font-ui)]">

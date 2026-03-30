@@ -2,7 +2,7 @@ import { auth } from '../../../auth';
 import { redirect } from 'next/navigation';
 import { AdminWorkspaceLayout } from '../../../components/admin/AdminWorkspaceLayout';
 import { Card } from '../../../components/ui/Card';
-import { buildGlobalAdminActions, getAdminNavSections } from '../../../lib/admin/nav';
+import { getAdminNavSections } from '../../../lib/admin/nav';
 import {
   buildGlobalAdminMetrics,
   buildGlobalAdminSummary,
@@ -21,16 +21,16 @@ export default async function AdminPage() {
 
   return (
     <AdminWorkspaceLayout
-      nav={{ sections: getAdminNavSections({ pathname: '/admin' }) }}
+      nav={{
+        sections: getAdminNavSections({ pathname: '/admin' }),
+        isGlobalAdmin: true,
+        currentKbSlug: null,
+      }}
       header={{
         title: 'Admin Overview',
-        description: 'Monitor users, knowledge bases, API keys, and recent activity from one place.',
         scopeLabel: 'Global Admin',
       }}
       metrics={overview.ok ? buildGlobalAdminMetrics(overview) : []}
-      actions={buildGlobalAdminActions()}
-      activity={overview.ok ? overview.activity : []}
-      activityUnavailableMessage={overviewWarning}
     >
       {overview.ok ? (
         <Card className="!bg-[color:var(--color-admin-panel)]">
@@ -39,10 +39,6 @@ export default async function AdminPage() {
           </p>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">
             {buildGlobalAdminSummary(overview)}
-          </p>
-          <p className="mt-4 max-w-3xl text-sm leading-6 text-ink-light">
-            Use the quick actions above to create a knowledge base, manage users, or issue an API
-            key. The activity feed reflects the latest global changes.
           </p>
         </Card>
       ) : (

@@ -1,17 +1,14 @@
 import Link from 'next/link';
 import { Badge } from '../ui/Badge';
-import type { AdminQuickActionItem } from './AdminQuickActions';
 
 export interface AdminSectionHeaderProps {
   title: string;
-  description: string;
   scopeLabel?: string;
-  primaryActions?: AdminQuickActionItem[];
+  primaryActions?: { label: string; href: string }[];
 }
 
 export function AdminSectionHeader({
   title,
-  description,
   scopeLabel,
   primaryActions = [],
 }: AdminSectionHeaderProps) {
@@ -23,7 +20,6 @@ export function AdminSectionHeader({
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-ink">
             {title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-light">{description}</p>
         </div>
 
         {primaryActions.length > 0 ? (
