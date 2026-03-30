@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import type { KnowledgeBase } from '@dovetail/types';
 import { apiClientFetch } from '../../../../lib/api-client';
 import { useToast } from '../../../../lib/hooks/useToast';
+import { runAdminMutation } from '../../../../lib/admin/mutation';
 import { Button } from '../../../../components/ui/Button';
 
 interface ApiKey {
@@ -18,6 +20,7 @@ interface ApiKey {
 }
 
 export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
+  const router = useRouter();
   const [keys, setKeys] = useState(initialKeys);
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
@@ -41,11 +44,13 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
     if (!newKeyName.trim()) return;
     setCreating(true);
     setCreateError(null);
-    try {
-      const result = await apiClientFetch<{ id: string; name: string; key: string; createdAt: string; knowledgeBaseIds?: string[] }>(
-        '/api/admin/api-keys',
-        { method: 'POST', body: JSON.stringify({ name: newKeyName, knowledgeBaseIds: selectedKbIds.length > 0 ? selectedKbIds : undefined }) },
-      );
+    await runAdminMutation({
+      execute: () =>
+        apiClientFetch<{ id: string; name: string; key: string; createdAt: string; knowledgeBaseIds?: string[] }>(
+          '/api/admin/api-keys',
+          { method: 'POST', body: JSON.stringify({ name: newKeyName, knowledgeBaseIds: selectedKbIds.length > 0 ? selectedKbIds : undefined }) },
+        ),
+      onSuccess: async (result) => {
       setCreatedKey(result.key);
       const kbNames = selectedKbIds.length > 0
         ? knowledgeBases.filter((kb) => selectedKbIds.includes(kb.id)).map((kb) => kb.name)
@@ -66,26 +71,31 @@ export function ApiKeyManager({ initialKeys }: { initialKeys: ApiKey[] }) {
       setNewKeyName('');
       setSelectedKbIds([]);
       toast.success('API key created');
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create API key');
-    } finally {
-      setCreating(false);
-    }
+      },
+      onError: (err) => {
+        setCreateError(err instanceof Error ? err.message : 'Failed to create API key');
+      },
+      refresh: router.refresh,
+    });
+    setCreating(false);
   }
 
   async function handleRevoke(id: string) {
     setRevoking(id);
-    try {
-      await apiClientFetch(`/api/admin/api-keys/${id}`, { method: 'DELETE' });
+    await runAdminMutation({
+      execute: () => apiClientFetch(`/api/admin/api-keys/${id}`, { method: 'DELETE' }),
+      onSuccess: async () => {
       setKeys((prev) =>
         prev.map((k) => (k.id === id ? { ...k, revokedAt: new Date().toISOString() } : k)),
       );
       toast.success('API key revoked');
-    } catch {
-      toast.error('Failed to revoke API key');
-    } finally {
-      setRevoking(null);
-    }
+      },
+      onError: () => {
+        toast.error('Failed to revoke API key');
+      },
+      refresh: router.refresh,
+    });
+    setRevoking(null);
   }
 
   return (

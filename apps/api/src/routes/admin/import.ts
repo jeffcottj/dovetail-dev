@@ -5,10 +5,11 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { eq, desc } from 'drizzle-orm';
-import { db, importJobs } from '@dovetail/db';
+import { and, desc, eq } from 'drizzle-orm';
+import { adminActivityEvents, db, importJobs } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 import { validateBody } from '../../utils/validate.js';
 import { getUploadsDir, ensureDir, cleanupDir } from '../../utils/storage.js';
 import { parseDataJson, buildCategoryTree } from '../../services/import/flowlu-parser.js';
@@ -140,11 +141,30 @@ importRouter.post(
 
     // Create import job record
     const kbId = req.params.kbId as string;
-    const [job] = await db.insert(importJobs).values({
-      createdBy: req.user!.id,
-      knowledgeBaseId: kbId,
-      options,
-    }).returning();
+    const job = await db.transaction(async (tx) => {
+      const [job] = await tx.insert(importJobs).values({
+        createdBy: req.user!.id,
+        knowledgeBaseId: kbId,
+        options,
+      }).returning();
+      if (!job) {
+        throw new Error('Import job creation failed');
+      }
+
+      await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+        kind: 'import.started',
+        actorId: req.user!.id,
+        knowledgeBaseId: kbId,
+        subjectId: job.id,
+        subjectLabel: 'Import job started',
+        metadata: {
+          jobId: job.id,
+          defaultStatus: options.defaultStatus,
+        },
+      }));
+
+      return job;
+    });
 
     // Start import in background
     const engine = new ImportEngine({
@@ -196,6 +216,16 @@ importRouter.get(
   requireRole('admin'),
   async (req, res) => {
     const jobId = req.params.id as string;
+    const kbId = req.params.kbId as string;
+
+    const [job] = await db
+      .select()
+      .from(importJobs)
+      .where(and(eq(importJobs.id, jobId), eq(importJobs.knowledgeBaseId, kbId)));
+    if (!job) {
+      res.status(404).json({ error: 'Import job not found' });
+      return;
+    }
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -203,9 +233,16 @@ importRouter.get(
       Connection: 'keep-alive',
     });
 
+    let didComplete = false;
+
     const listener = (event: ProgressEvent) => {
+      if (didComplete || res.writableEnded) {
+        return;
+      }
+
       res.write(`data: ${JSON.stringify(event)}\n\n`);
       if (event.type === 'complete') {
+        didComplete = true;
         res.end();
       }
     };
@@ -215,10 +252,28 @@ importRouter.get(
     }
     jobListeners.get(jobId)!.add(listener);
 
-    // Check if job is already complete
-    const [job] = await db.select().from(importJobs).where(eq(importJobs.id, jobId));
-    if (job && (job.status === 'completed' || job.status === 'failed')) {
-      res.write(`data: ${JSON.stringify({ type: 'complete', imported: job.importedCount, errors: (job.errorLog as any[]).length })}\n\n`);
+    const [currentJob] = await db
+      .select()
+      .from(importJobs)
+      .where(and(eq(importJobs.id, jobId), eq(importJobs.knowledgeBaseId, kbId)));
+
+    if (currentJob && (currentJob.status === 'completed' || currentJob.status === 'failed')) {
+      const listeners = jobListeners.get(jobId);
+      listeners?.delete(listener);
+      if (listeners?.size === 0) {
+        jobListeners.delete(jobId);
+      }
+
+      if (didComplete || res.writableEnded) {
+        return;
+      }
+
+      didComplete = true;
+      res.write(`data: ${JSON.stringify({
+        type: 'complete',
+        imported: currentJob.importedCount,
+        errors: (currentJob.errorLog as any[]).length,
+      })}\n\n`);
       res.end();
       return;
     }
@@ -238,7 +293,13 @@ importRouter.get(
   authMiddleware,
   requireRole('admin'),
   async (req, res) => {
-    const [job] = await db.select().from(importJobs).where(eq(importJobs.id, req.params.id as string));
+    const [job] = await db
+      .select()
+      .from(importJobs)
+      .where(and(
+        eq(importJobs.id, req.params.id as string),
+        eq(importJobs.knowledgeBaseId, req.params.kbId as string),
+      ));
     if (!job) {
       res.status(404).json({ error: 'Import job not found' });
       return;
@@ -252,10 +313,14 @@ importRouter.get(
   '/',
   authMiddleware,
   requireRole('admin'),
-  async (_req, res) => {
-    const jobs = await db.select().from(importJobs).orderBy(desc(importJobs.createdAt));
+  async (req, res) => {
+    const jobs = await db
+      .select()
+      .from(importJobs)
+      .where(eq(importJobs.knowledgeBaseId, req.params.kbId as string))
+      .orderBy(desc(importJobs.createdAt));
     res.json(jobs);
   },
 );
 
-export { tempSessions };
+export { tempSessions, jobListeners };

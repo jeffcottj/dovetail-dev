@@ -24,8 +24,9 @@ vi.mock('../../utils/category-path.js', () => ({
 }));
 
 import { app } from '../../app.js';
-import { db } from '@dovetail/db';
+import { adminActivityEvents, db } from '@dovetail/db';
 import { resolveCategoryPath, buildCategoryPath } from '../../utils/category-path.js';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 
 const CAT_ID = '00000000-0000-4000-8000-000000000001';
 const ART_ID = '00000000-0000-4000-8000-000000000010';
@@ -46,6 +47,35 @@ const mockArticle = {
 };
 
 const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
+
+function predicateReferencesColumn(
+  value: unknown,
+  columnName: string,
+  seen = new WeakSet<object>(),
+): boolean {
+  if (Array.isArray(value)) {
+    return value.some(entry => predicateReferencesColumn(entry, columnName, seen));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if ('name' in value && value.name === columnName) {
+    return true;
+  }
+
+  if ('queryChunks' in value && Array.isArray(value.queryChunks)) {
+    return value.queryChunks.some(chunk => predicateReferencesColumn(chunk, columnName, seen));
+  }
+
+  return false;
+}
 
 describe('Article routes', () => {
   let viewerToken: string;
@@ -86,7 +116,8 @@ describe('Article routes', () => {
     it('returns a single article', async () => {
       (db.select as Mock)
         .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(createChain([mockArticle]));
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
 
       const res = await supertest(app)
         .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
@@ -94,6 +125,19 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(ART_ID);
+    });
+
+    it('returns 404 when the article belongs to another knowledge base', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }]));
+
+      const res = await supertest(app)
+        .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(404);
     });
 
     it('returns 404 when not found', async () => {
@@ -125,19 +169,68 @@ describe('Article routes', () => {
   });
 
   describe('POST /api/knowledge-bases/kb-1/articles', () => {
-    it('returns 403 for viewer', async () => {
+    it('allows a globally viewer user with effective editor access', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock).mockResolvedValueOnce([{ role: 'editor' }]);
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const createArticleInsert = createChain([{
+          ...mockArticle,
+          authorId: 'user-1',
+        }]);
+        activityInsert = createChain([{ id: 'evt-article-create' }]);
+        const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn()
+            .mockReturnValueOnce(createArticleInsert)
+            .mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/articles')
         .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
         .send({ title: 'Test', categoryId: CAT_ID, content: {} });
+
+      expect(res.status).toBe(201);
+      expect(res.body.authorId).toBe('user-1');
+    });
+
+    it('returns 403 when effective editor access is missing', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock).mockResolvedValueOnce([{ role: 'viewer' }]);
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases/kb-1/articles')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
+        .send({ title: 'Test', categoryId: CAT_ID, content: {} });
+
       expect(res.status).toBe(403);
     });
 
     it('creates a draft article for editor', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.insert as Mock).mockReturnValue(createChain([mockArticle]));
+      (db.execute as Mock).mockResolvedValue([]);
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const createArticleInsert = createChain([mockArticle]);
+        activityInsert = createChain([{ id: 'evt-article-create' }]);
+        const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn()
+            .mockReturnValueOnce(createArticleInsert)
+            .mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/articles')
@@ -146,11 +239,28 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.title).toBe('Test Article');
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'article.created',
+        actorId: USER_ID,
+        knowledgeBaseId: 'kb-1',
+        subjectId: ART_ID,
+        subjectLabel: 'Test Article',
+        metadata: { articleId: ART_ID },
+      }));
     });
 
     it('includes categoryPath in the response', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.insert as Mock).mockReturnValue(createChain([mockArticle]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ id: 'evt-article-create' }])),
+        };
+        return fn(tx);
+      });
       (buildCategoryPath as Mock).mockResolvedValueOnce(['housing', 'rental']);
 
       const res = await supertest(app)
@@ -172,21 +282,82 @@ describe('Article routes', () => {
         .send({ categoryId: CAT_ID });
       expect(res.status).toBe(400);
     });
+
+    it('returns 404 when the destination category belongs to another knowledge base', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }])),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases/kb-1/articles')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Test Article', categoryId: CAT_ID, content: {} });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the destination category disappears before article insert', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn().mockImplementationOnce(() => ({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockRejectedValue({ code: '23503' }),
+            }),
+          })),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases/kb-1/articles')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Test Article', categoryId: CAT_ID, content: {} });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('PATCH /api/knowledge-bases/kb-1/articles/:id', () => {
     it('updates article and creates version', async () => {
-      const updated = { ...mockArticle, title: 'Updated Title' };
+      const nextCategoryId = '00000000-0000-4000-8000-000000000002';
+      const updated = { ...mockArticle, title: 'Updated Title', categoryId: nextCategoryId };
+      let activityInsert: ReturnType<typeof createChain>;
 
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
 
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const versionInsert = createChain([]);
+        activityInsert = createChain([{ id: 'evt-article-edit' }]);
         const tx = {
           select: vi.fn()
             .mockReturnValueOnce(createChain([mockArticle]))  // fetch current article
             .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))  // get category KB
-            .mockReturnValueOnce(createChain([{ max: 0 }])),   // max version
-          insert: vi.fn().mockReturnValue(createChain([])),     // insert version
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))  // destination category KB
+            .mockReturnValueOnce(createChain([{ max: 0 }]))   // max version
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])), // get updated category KB
+          insert: vi.fn()
+            .mockReturnValueOnce(versionInsert)
+            .mockReturnValueOnce(activityInsert), // insert version, then activity event
           update: vi.fn().mockReturnValue(createChain([updated])), // update article
         };
         return fn(tx);
@@ -198,10 +369,18 @@ describe('Article routes', () => {
       const res = await supertest(app)
         .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
-        .send({ title: 'Updated Title' });
+        .send({ title: 'Updated Title', categoryId: nextCategoryId });
 
       expect(res.status).toBe(200);
       expect(res.body.title).toBe('Updated Title');
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'article.edited',
+        actorId: USER_ID,
+        knowledgeBaseId: 'kb-1',
+        subjectId: ART_ID,
+        subjectLabel: 'Updated Title',
+        metadata: { articleId: ART_ID },
+      }));
     });
 
     it('returns 404 when article not found', async () => {
@@ -224,12 +403,221 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(404);
     });
+
+    it('returns 404 when the current article belongs to another knowledge base', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }])),
+          insert: vi.fn(),
+          update: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Updated Title' });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.update).not.toHaveBeenCalled();
+      expect(db.execute).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when the article changes before the conditional update returns', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ max: 0 }])),
+          insert: vi.fn(),
+          update: vi.fn().mockReturnValue(createChain([])),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Updated Title' });
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when a concurrent publish changes lifecycle state before patch update', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ max: 0 }]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn()
+            .mockReturnValueOnce(createChain([]))
+            .mockReturnValueOnce(createChain([{ id: 'evt-article-edit-race' }])),
+          update: vi.fn().mockImplementation(() => ({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockImplementation((condition: unknown) => ({
+                returning: vi.fn().mockResolvedValue(
+                  predicateReferencesColumn(condition, 'status')
+                    && predicateReferencesColumn(condition, 'published_at')
+                    ? []
+                    : [{ ...mockArticle, title: 'Updated Title' }],
+                ),
+              })),
+            }),
+          })),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: 'Updated Title' });
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when moving an article to a category from another knowledge base', async () => {
+      const nextCategoryId = '00000000-0000-4000-8000-000000000002';
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }])),
+          insert: vi.fn(),
+          update: vi.fn(),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ categoryId: nextCategoryId });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the destination category disappears before the move update', async () => {
+      const nextCategoryId = '00000000-0000-4000-8000-000000000002';
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]))
+            .mockReturnValueOnce(createChain([{ max: 0 }])),
+          insert: vi.fn(),
+          update: vi.fn().mockImplementation(() => ({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockRejectedValue({ code: '23503' }),
+              }),
+            }),
+          })),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ categoryId: nextCategoryId });
+
+      expect(res.status).toBe(404);
+      expect(tx!.insert).not.toHaveBeenCalled();
+    });
+
+    it('returns the current article without versioning or activity for a no-op patch', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockArticle]))
+            .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }])),
+          insert: vi.fn(),
+          update: vi.fn(),
+        };
+        return fn(tx);
+      });
+      (db.execute as Mock).mockResolvedValue([]);
+
+      const res = await supertest(app)
+        .patch(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ title: mockArticle.title, categoryId: mockArticle.categoryId, content: mockArticle.content });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(ART_ID);
+      expect(tx!.insert).not.toHaveBeenCalled();
+      expect(tx!.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('DELETE /api/knowledge-bases/kb-1/articles/:id', () => {
     it('archives article (soft delete)', async () => {
       const archived = { ...mockArticle, status: 'archived' };
-      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
       (db.update as Mock).mockReturnValue(createChain([archived]));
 
       const res = await supertest(app)
@@ -239,12 +627,73 @@ describe('Article routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('archived');
     });
+
+    it('returns 404 when archiving an article from another knowledge base', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-2' }]));
+
+      const res = await supertest(app)
+        .delete(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(404);
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.execute).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when archiving loses a race with a concurrent move', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockReturnValue(createChain([]));
+
+      const res = await supertest(app)
+        .delete(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 when a same-category lifecycle change wins before archive update', async () => {
+      const archived = { ...mockArticle, status: 'archived' as const };
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockImplementation(() => ({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockImplementation((condition: unknown) => ({
+            returning: vi.fn().mockResolvedValue(
+              predicateReferencesColumn(condition, 'status')
+                && predicateReferencesColumn(condition, 'published_at')
+                ? []
+                : [archived],
+            ),
+          })),
+        }),
+      }));
+
+      const res = await supertest(app)
+        .delete(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
+    });
   });
 
   describe('POST /api/knowledge-bases/kb-1/articles/:id/publish', () => {
     it('publishes a draft article', async () => {
       const published = { ...mockArticle, status: 'published', publishedAt: new Date() };
-      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
       (db.update as Mock).mockReturnValue(createChain([published]));
 
       const res = await supertest(app)
@@ -256,14 +705,72 @@ describe('Article routes', () => {
     });
 
     it('returns 404 when article not found', async () => {
-      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.update as Mock).mockReturnValue(createChain([]));
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([]));
 
       const res = await supertest(app)
         .post('/api/knowledge-bases/kb-1/articles/nonexistent/publish')
         .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
 
       expect(res.status).toBe(404);
+    });
+
+    it('returns 403 when publishing without effective editor role', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValueOnce([{ role: 'viewer' }]);
+
+      const res = await supertest(app)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(403);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when publishing loses a race with a concurrent move', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockReturnValue(createChain([]));
+
+      const res = await supertest(app)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 when a same-category lifecycle change wins before publish update', async () => {
+      const published = { ...mockArticle, status: 'published' as const, publishedAt: new Date() };
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (db.execute as Mock).mockResolvedValue([]);
+      (db.update as Mock).mockImplementation(() => ({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockImplementation((condition: unknown) => ({
+            returning: vi.fn().mockResolvedValue(
+              predicateReferencesColumn(condition, 'status')
+                && predicateReferencesColumn(condition, 'published_at')
+                ? []
+                : [published],
+            ),
+          })),
+        }),
+      }));
+
+      const res = await supertest(app)
+        .post(`/api/knowledge-bases/kb-1/articles/${ART_ID}/publish`)
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+
+      expect(res.status).toBe(409);
     });
   });
 });

@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { apiClientFetch } from '../lib/api-client';
-import type { Attachment } from '@dovetail/types';
+
+interface Attachment {
+  id: string;
+  articleId: string | null;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClientFetch } from '../../../../lib/api-client';
 import { useToast } from '../../../../lib/hooks/useToast';
+import { runAdminMutation } from '../../../../lib/admin/mutation';
 
 interface User {
   id: string;
@@ -25,18 +26,22 @@ export function UserList({ users: initialUsers }: { users: User[] }) {
 
   async function handleRoleChange(userId: string, newRole: string) {
     setUpdating(userId);
-    try {
-      const updated = await apiClientFetch<User>(`/api/admin/users/${userId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ role: newRole }),
-      });
-      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: updated.role } : u)));
-      toast.success('Role updated');
-    } catch (err) {
-      toast.error('Failed to update role');
-    } finally {
-      setUpdating(null);
-    }
+    await runAdminMutation({
+      execute: () =>
+        apiClientFetch<User>(`/api/admin/users/${userId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ role: newRole }),
+        }),
+      onSuccess: async (updated) => {
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: updated.role } : u)));
+        toast.success('Role updated');
+      },
+      onError: () => {
+        toast.error('Failed to update role');
+      },
+      refresh: router.refresh,
+    });
+    setUpdating(null);
   }
 
   return (

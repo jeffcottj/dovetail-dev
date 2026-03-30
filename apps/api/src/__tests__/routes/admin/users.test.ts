@@ -19,7 +19,8 @@ vi.mock('@dovetail/db', async (importOriginal) => {
 });
 
 import { app } from '../../../app.js';
-import { db } from '@dovetail/db';
+import { adminActivityEvents, db, users } from '@dovetail/db';
+import { buildAdminActivityInsert } from '../../../services/admin-activity.js';
 
 describe('Admin user routes', () => {
   let adminToken: string;
@@ -57,6 +58,55 @@ describe('Admin user routes', () => {
       expect(res.body.total).toBe(1);
       expect(res.body.data[0].name).toBe('Alice');
     });
+
+    it('orders paginated users deterministically when createdAt ties', async () => {
+      const countQuery = createChain([{ count: 2 }]);
+      const dataQuery = createChain([
+        { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() },
+        { id: 'u2', email: 'b@b.com', name: 'Bob', role: 'viewer', provider: 'google', createdAt: new Date() },
+      ]);
+
+      (db.select as Mock)
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(dataQuery);
+
+      const res = await supertest(app)
+        .get('/api/admin/users?page=2&limit=1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(dataQuery.orderBy).toHaveBeenCalledWith(users.createdAt, users.id);
+    });
+  });
+
+  describe('GET /api/admin/users/:id', () => {
+    it('returns a user by id for admins', async () => {
+      const user = {
+        id: 'u2',
+        email: 'bob@example.com',
+        name: 'Bob',
+        avatarUrl: null,
+        role: 'editor',
+        provider: 'google',
+        createdAt: new Date(),
+      };
+
+      (db.select as Mock).mockReturnValueOnce(createChain([user]));
+
+      const res = await supertest(app)
+        .get('/api/admin/users/u2')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        id: 'u2',
+        email: 'bob@example.com',
+        name: 'Bob',
+        avatarUrl: null,
+        role: 'editor',
+        provider: 'google',
+      });
+    });
   });
 
   describe('PATCH /api/admin/users/:id', () => {
@@ -68,9 +118,19 @@ describe('Admin user routes', () => {
       expect(res.status).toBe(403);
     });
 
-    it('updates user role', async () => {
-      const updated = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'editor', provider: 'google', createdAt: new Date() };
-      (db.update as Mock).mockReturnValue(createChain([updated]));
+    it('updates user role and records previous/new role metadata', async () => {
+      const current = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() };
+      const updated = { ...current, role: 'editor' as const };
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-1' }]);
+        const tx = {
+          select: vi.fn().mockReturnValue(createChain([current])),
+          update: vi.fn().mockReturnValue(createChain([updated])),
+          insert: vi.fn().mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .patch('/api/admin/users/u1')
@@ -79,10 +139,51 @@ describe('Admin user routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.role).toBe('editor');
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'user.role_changed',
+        actorId: 'admin-1',
+        subjectId: updated.id,
+        subjectLabel: updated.name,
+        metadata: { previousRole: current.role, newRole: updated.role },
+      }));
+    });
+
+    it('returns the existing user without activity when role is unchanged', async () => {
+      const current = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'editor', provider: 'google', createdAt: new Date() };
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValue(createChain([current])),
+          update: vi.fn(),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch('/api/admin/users/u1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ role: 'editor' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe('editor');
+      expect(tx!.update).not.toHaveBeenCalled();
+      expect(tx!.insert).not.toHaveBeenCalled();
     });
 
     it('returns 404 when user not found', async () => {
-      (db.update as Mock).mockReturnValue(createChain([]));
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          select: vi.fn().mockReturnValue(createChain([])),
+          update: vi.fn(),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .patch('/api/admin/users/nonexistent')
@@ -90,6 +191,31 @@ describe('Admin user routes', () => {
         .send({ role: 'editor' });
 
       expect(res.status).toBe(404);
+    });
+
+    it('returns 409 without activity when the role update loses a race', async () => {
+      const current = { id: 'u1', email: 'a@b.com', name: 'Alice', role: 'viewer', provider: 'google', createdAt: new Date() };
+      let tx: {
+        select: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+        insert: ReturnType<typeof vi.fn>;
+      };
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        tx = {
+          select: vi.fn().mockReturnValue(createChain([current])),
+          update: vi.fn().mockReturnValue(createChain([])),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch('/api/admin/users/u1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ role: 'editor' });
+
+      expect(res.status).toBe(409);
+      expect(tx!.insert).not.toHaveBeenCalled();
     });
 
     it('returns 400 for invalid role', async () => {

@@ -1,6 +1,17 @@
 export type Role = 'viewer' | 'editor' | 'admin';
 export type OAuthProvider = 'google' | 'entra';
 export type ArticleStatus = 'draft' | 'published' | 'archived';
+export type AdminActivityKind =
+  | 'user.created'
+  | 'user.deleted'
+  | 'user.role_changed'
+  | 'kb.created'
+  | 'kb.deleted'
+  | 'import.started'
+  | 'api_key.created'
+  | 'api_key.revoked'
+  | 'article.created'
+  | 'article.edited';
 
 export interface User {
   id: string;
@@ -18,6 +29,16 @@ export interface KnowledgeBase {
   slug: string;
   description: string | null;
   createdAt: Date;
+}
+
+export interface AdminActivityItem {
+  id: string;
+  kind: AdminActivityKind;
+  createdAt: string;
+  actor: { id: string; name: string; email: string };
+  knowledgeBase?: { id: string; name: string } | null;
+  subject: { id: string; label: string };
+  metadata: Record<string, unknown>;
 }
 
 export interface UserKbRole {

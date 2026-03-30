@@ -6,7 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run",
+    "test": "sh -c 'case \"$1\" in --) shift;; esac; exec vitest run \"$@\"' --",
     "test:watch": "vitest"
   },
   "dependencies": {

@@ -43,6 +43,13 @@
       "when": 1774643359217,
       "tag": "0005_add_knowledge_bases",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774749896659,
+      "tag": "0006_add_admin_activity_events",
+      "breakpoints": true
     }
   ]
 }

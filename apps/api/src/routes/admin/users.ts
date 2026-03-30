@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, sql } from 'drizzle-orm';
-import { db, users, userCategoryRoles, categories } from '@dovetail/db';
-import { authMiddleware } from '../../middleware/auth.js';
+import { adminActivityEvents, db, users, userCategoryRoles, categories } from '@dovetail/db';
+import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 import { validateBody, validateQuery } from '../../utils/validate.js';
 import { paginationSchema, paginate } from '../../utils/pagination.js';
 
@@ -38,7 +39,7 @@ adminUsersRouter.get('/', authMiddleware, requireRole('admin'), validateQuery(pa
       createdAt: users.createdAt,
     })
     .from(users)
-    .orderBy(users.createdAt)
+    .orderBy(users.createdAt, users.id)
     .limit(limit)
     .offset(offset);
 
@@ -46,18 +47,58 @@ adminUsersRouter.get('/', authMiddleware, requireRole('admin'), validateQuery(pa
 });
 
 // PATCH /api/admin/users/:id — update global role
-adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBody(updateRoleSchema), async (req, res) => {
+adminUsersRouter.patch('/:id', authMiddleware, requireRole('admin'), validateBody(updateRoleSchema), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const { role } = req.body;
+  let updated;
+  let outcome: 'updated' | 'not_found' | 'conflict' = 'not_found';
 
-  const [updated] = await db
-    .update(users)
-    .set({ role })
-    .where(eq(users.id, id))
-    .returning();
+  await db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(users)
+      .where(eq(users.id, id));
 
-  if (!updated) {
+    if (!current) {
+      outcome = 'not_found';
+      return;
+    }
+
+    if (current.role === role) {
+      updated = current;
+      outcome = 'updated';
+      return;
+    }
+
+    [updated] = await tx
+      .update(users)
+      .set({ role })
+      .where(and(eq(users.id, id), eq(users.role, current.role)))
+      .returning();
+
+    if (!updated) {
+      outcome = 'conflict';
+      return;
+    }
+
+    await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+      kind: 'user.role_changed',
+      actorId: req.user!.id,
+      subjectId: updated.id,
+      subjectLabel: updated.name,
+      metadata: { previousRole: current.role, newRole: updated.role },
+    }));
+
+    outcome = 'updated';
+  });
+
+  if (outcome === 'not_found') {
     res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  if (outcome === 'conflict') {
+    res.status(409).json({ error: 'User role changed concurrently' });
     return;
   }
 
@@ -116,4 +157,30 @@ adminUsersRouter.delete('/:id/category-roles/:categoryId', authMiddleware, requi
     .where(and(eq(userCategoryRoles.userId, userId), eq(userCategoryRoles.categoryId, categoryId)));
 
   res.status(204).end();
+});
+
+// GET /api/admin/users/:id — fetch one user
+adminUsersRouter.get('/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+  const id = req.params.id as string;
+
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      role: users.role,
+      provider: users.provider,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  res.json(user);
 });
