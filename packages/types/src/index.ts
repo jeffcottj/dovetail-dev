@@ -71,6 +71,22 @@ export interface Article {
   publishedAt: Date | null;
 }
 
+export interface WorkspaceSearchResult {
+  id: string;
+  title: string;
+  slug: string;
+  categoryId: string;
+  categoryPath?: string[];
+  knowledgeBaseId: string;
+  knowledgeBaseName: string;
+  knowledgeBaseSlug: string;
+  authorId: string;
+  status: ArticleStatus;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  rank?: number;
+}
+
 export interface ArticleVersion {
   id: string;
   articleId: string;

@@ -17,6 +17,12 @@ vi.mock('@dovetail/db', async (importOriginal) => {
   };
 });
 
+vi.mock('../../utils/category-path.js', () => ({
+  buildCategoryPath: vi.fn(async (categoryId: string) => (
+    categoryId === 'cat-1' ? ['housing'] : ['tenant']
+  )),
+}));
+
 import { app } from '../../app.js';
 import { db } from '@dovetail/db';
 
@@ -146,6 +152,104 @@ describe('Workspace activity routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
+    });
+  });
+});
+
+describe('Workspace search routes', () => {
+  let viewerToken: string;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    viewerToken = await makeToken({ sub: 'user-1', role: 'viewer' });
+  });
+
+  describe('GET /api/workspace/search', () => {
+    it('returns 400 when q is missing', async () => {
+      const res = await supertest(app)
+        .get('/api/workspace/search')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(400);
+      expect(db.execute).not.toHaveBeenCalled();
+    });
+
+    it('returns mixed KB full-text search results', async () => {
+      (db.execute as Mock).mockResolvedValueOnce([
+        {
+          id: 'article-1',
+          title: 'Housing Benefits Overview',
+          slug: 'housing-benefits-overview',
+          categoryId: 'cat-1',
+          categoryPath: ['housing'],
+          knowledgeBaseId: 'kb-1',
+          knowledgeBaseName: 'Housing',
+          knowledgeBaseSlug: 'housing',
+          authorId: 'user-1',
+          status: 'published',
+          createdAt: new Date('2026-03-28T12:00:00.000Z'),
+          updatedAt: new Date('2026-03-28T12:00:00.000Z'),
+          rank: 0.91,
+        },
+        {
+          id: 'article-2',
+          title: 'Tenant Rights Overview',
+          slug: 'tenant-rights-overview',
+          categoryId: 'cat-2',
+          categoryPath: ['tenant'],
+          knowledgeBaseId: 'kb-2',
+          knowledgeBaseName: 'Tenant',
+          knowledgeBaseSlug: 'tenant',
+          authorId: 'user-2',
+          status: 'published',
+          createdAt: new Date('2026-03-28T11:00:00.000Z'),
+          updatedAt: new Date('2026-03-28T11:00:00.000Z'),
+          rank: 0.82,
+        },
+      ]);
+
+      const res = await supertest(app)
+        .get('/api/workspace/search?q=overview')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [
+          {
+            id: 'article-1',
+            title: 'Housing Benefits Overview',
+            slug: 'housing-benefits-overview',
+            categoryId: 'cat-1',
+            categoryPath: ['housing'],
+            knowledgeBaseId: 'kb-1',
+            knowledgeBaseName: 'Housing',
+            knowledgeBaseSlug: 'housing',
+            authorId: 'user-1',
+            status: 'published',
+            createdAt: '2026-03-28T12:00:00.000Z',
+            updatedAt: '2026-03-28T12:00:00.000Z',
+            rank: 0.91,
+          },
+          {
+            id: 'article-2',
+            title: 'Tenant Rights Overview',
+            slug: 'tenant-rights-overview',
+            categoryId: 'cat-2',
+            categoryPath: ['tenant'],
+            knowledgeBaseId: 'kb-2',
+            knowledgeBaseName: 'Tenant',
+            knowledgeBaseSlug: 'tenant',
+            authorId: 'user-2',
+            status: 'published',
+            createdAt: '2026-03-28T11:00:00.000Z',
+            updatedAt: '2026-03-28T11:00:00.000Z',
+            rank: 0.82,
+          },
+        ],
+        total: 2,
+        page: 1,
+        limit: 20,
+      });
     });
   });
 });
