@@ -23,6 +23,12 @@ vi.mock('next/link', () => ({
   },
 }));
 
+vi.mock('../../components/admin/AdminContextSwitcher', () => ({
+  AdminContextSwitcher: function AdminContextSwitcher() {
+    return React.createElement('div', { 'data-testid': 'context-switcher' });
+  },
+}));
+
 function collectElements(node: ReactNode, elements: ReactElement<any>[] = []) {
   if (Array.isArray(node)) {
     node.forEach((child) => collectElements(child, elements));
@@ -83,7 +89,7 @@ describe('Admin nav shell', () => {
 
     expect(activeLinks).toHaveLength(2);
     expect(desktopRail?.props.className).toContain('w-full');
-    expect(desktopRail?.props.className).toContain('lg:w-72');
+    expect(desktopRail?.props.className).toContain('lg:w-96');
 
     const workspace = AdminWorkspaceLayout({
       nav: { sections, isGlobalAdmin: true, currentKbSlug: null },

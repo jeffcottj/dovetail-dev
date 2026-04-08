@@ -48,10 +48,12 @@ pnpm lint                   # lint across all packages
 pnpm --filter @dovetail/api dev        # API only (port 3001)
 pnpm --filter @dovetail/web dev        # web only (port 3000)
 pnpm --filter @dovetail/api test       # API tests only
+pnpm --filter @dovetail/web test       # web tests only
 pnpm --filter @dovetail/api test:watch # watch mode
 
 # Single test file
 cd apps/api && pnpm vitest run src/__tests__/health.test.ts
+cd apps/web && pnpm vitest run app/(admin)/kb/[kbSlug]/admin/page.test.tsx
 ```
 
 ### Database
@@ -92,6 +94,7 @@ All content API routes are scoped under `/api/knowledge-bases/:kbId/`. The `reso
 - `/api/knowledge-bases/:kbId/search` — full-text, semantic, hybrid search
 - `/api/knowledge-bases/:kbId/tags` — tag management
 - `/api/knowledge-bases/:kbId/admin/import` — ZIP/HTML import
+- `/api/articles/:id/attachments` — file attachments (not KB-scoped)
 - `/api/admin/users`, `/api/admin/api-keys` — global admin (not KB-scoped)
 - `POST /api/v1/rag/search` — RAG endpoint (API key auth, KB-aware)
 
@@ -144,6 +147,19 @@ Embedding generation is async (does not block the HTTP response). Provider is co
 
 API routes use Zod schemas with middleware factories from `apps/api/src/utils/validate.ts` — `validateBody(schema)` and `validateQuery(schema)` — to validate and type-narrow request data before the handler runs.
 
+### Frontend Architecture (apps/web)
+
+**Route groups:**
+- `app/(main)/` — user-facing KB browsing (public/viewer routes)
+- `app/(admin)/` — admin dashboard (KB admin, global admin)
+
+**API fetch helpers — use the right one:**
+- `lib/api.ts` → `apiFetch<T>(path, init?)` — server components only; forwards the auth cookie server-side to the Express API
+- `lib/api-client.ts` → `apiClientFetch<T>(path, init?)` — client components only (`'use client'`); uses `credentials: 'include'` via the Next.js proxy
+
+**Article/category catch-all routing:**
+`app/(main)/kb/[kbSlug]/articles/[...slugPath]/page.tsx` handles view, edit, and history by inspecting the last path segment (`edit`, `history`, or article slug). Because `[...slugPath]` is a catch-all, no child route segments can be added beneath it — route variants must be encoded in the slug array itself.
+
 ## Environment Variables
 
 See `.env.example` for the full list. Key ones:
@@ -161,9 +177,10 @@ API_URL               Express API URL for Next.js rewrites (default: http://loca
 
 ## Testing Conventions
 
-- **Framework:** Vitest + supertest (API), Vitest (packages)
+- **Framework:** Vitest + supertest (API), Vitest (packages and web)
 - **Pattern:** TDD — write the failing test first, then implement
 - **API tests:** use `supertest(app)` directly (no server needed)
+- **Web tests:** unit tests for server components and `lib/` utilities; mock `auth`, `lib/kb`, and data-fetching functions with `vi.mock`
 - **DB tests:** run against a real local Postgres (use `DATABASE_URL` pointing to dev DB)
 - **Mocking:** use `vi.mock('@dovetail/db', ...)` to mock the db in unit tests for services/middleware
 - **Smoke tests:** `just smoke` for quick integration check against a running stack
