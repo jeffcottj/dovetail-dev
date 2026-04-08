@@ -22,6 +22,24 @@ export const DEV_USERS = {
     name: 'Local Viewer',
     role: 'viewer' as Role,
   },
+  kbAdmin: {
+    id: '00000000-0000-4000-8000-000000000004',
+    email: 'kb-admin@local.dovetail.test',
+    name: 'KB Admin (Housing)',
+    role: 'viewer' as Role,
+  },
+  kbEditor: {
+    id: '00000000-0000-4000-8000-000000000005',
+    email: 'kb-editor@local.dovetail.test',
+    name: 'KB Editor (Consumer)',
+    role: 'viewer' as Role,
+  },
+  categoryEditor: {
+    id: '00000000-0000-4000-8000-000000000006',
+    email: 'cat-editor@local.dovetail.test',
+    name: 'Category Editor',
+    role: 'viewer' as Role,
+  },
 } as const;
 
 export type DevUserKey = keyof typeof DEV_USERS;
