@@ -15,3 +15,6 @@ test-export.zip
 
 # Azure deployment secrets (local parameter overrides — contain passwords/keys)
 infra/*.local.bicepparam
+
+# Bicep compiled ARM templates (generated artifacts)
+infra/**/*.json
