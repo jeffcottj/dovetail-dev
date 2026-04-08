@@ -136,5 +136,16 @@ describe('Workspace activity routes', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
     });
+
+    it('returns [] when there are no activity rows', async () => {
+      (db.execute as Mock).mockResolvedValueOnce([]);
+
+      const res = await supertest(app)
+        .get('/api/workspace/activity')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
   });
 });
