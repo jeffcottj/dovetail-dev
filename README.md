@@ -65,6 +65,15 @@ Copy `.env.example` to `.env` and fill in these values:
 
 See the [full deployment guide](docs/explainers/deployment-guide.md) for detailed instructions, HTTPS setup, backups, and troubleshooting.
 
+## Deployment
+
+Dovetail supports two deployment paths:
+
+- **[Docker Compose on a VM](docs/explainers/deployment-guide.md)** — simplest option; everything runs in Docker on a single Linux server. Good for small teams or on-premise hosting.
+- **[Azure Container Apps](infra/README.md)** — managed containers on Azure with a managed PostgreSQL database. Automatic HTTPS, scaling, and backups.
+
+Both paths use the same Docker images. The "Getting Started" section above covers the Docker Compose quick start.
+
 ## How It Works
 
 ```
