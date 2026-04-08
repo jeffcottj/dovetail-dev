@@ -65,6 +65,9 @@ app.use('/api/knowledge-bases/:kbId/admin/articles/bulk-publish', resolveKb, bul
 import { kbOverviewRouter } from './routes/admin/kb-overview.js';
 app.use('/api/knowledge-bases/:kbId/admin/overview', authMiddleware, resolveKb, kbOverviewRouter);
 
+import { workspaceRouter } from './routes/workspace.js';
+app.use('/api/workspace', workspaceRouter);
+
 import { knowledgeBasesRouter } from './routes/knowledge-bases.js';
 app.use('/api/knowledge-bases', knowledgeBasesRouter);
 
