@@ -9,7 +9,12 @@ export function SearchBar() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const kb = useOptionalKb();
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
   const searchPath = kb ? `/kb/${kb.slug}/search` : '/search';
+  const searchLabel = kb ? 'Search articles' : 'Search across all knowledge bases';
+  const searchPlaceholder = kb
+    ? `Search articles... ${isMac ? '(⌘K)' : '(Ctrl+K)'}`
+    : `Search across all knowledge bases... ${isMac ? '(⌘K)' : '(Ctrl+K)'}`;
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -35,8 +40,6 @@ export function SearchBar() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
-
   return (
     <form onSubmit={handleSubmit} className="relative w-full max-w-[56rem]">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted pointer-events-none" />
@@ -45,8 +48,8 @@ export function SearchBar() {
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder={`Search articles... ${isMac ? '(⌘K)' : '(Ctrl+K)'}`}
-        aria-label="Search articles"
+        placeholder={searchPlaceholder}
+        aria-label={searchLabel}
         className="w-full pl-10 pr-4 py-2 text-sm font-[family-name:var(--font-ui)] bg-parchment-warm border border-border-light rounded-lg focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 placeholder:text-ink-muted/60 text-ink transition-colors"
       />
     </form>
