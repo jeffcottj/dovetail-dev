@@ -14,7 +14,7 @@ export interface BuildAdminActivityInput {
 export interface AdminActivityRow {
   id: string;
   kind: string;
-  createdAt: Date;
+  createdAt: Date | string;
   actorId: string;
   actorName: string;
   actorEmail: string;
@@ -36,11 +36,25 @@ export function buildAdminActivityInsert(input: BuildAdminActivityInput): InferI
   };
 }
 
+function normalizeCreatedAt(createdAt: Date | string): string {
+  if (createdAt instanceof Date) {
+    return createdAt.toISOString();
+  }
+
+  if (createdAt.includes('T')) {
+    return createdAt.endsWith('Z') || /[+-]\d\d:\d\d$/.test(createdAt)
+      ? new Date(createdAt).toISOString()
+      : new Date(`${createdAt}Z`).toISOString();
+  }
+
+  return new Date(`${createdAt.replace(' ', 'T')}Z`).toISOString();
+}
+
 export function normalizeAdminActivityRow(row: AdminActivityRow): AdminActivityItem {
   return {
     id: row.id,
     kind: row.kind as AdminActivityKind,
-    createdAt: row.createdAt.toISOString(),
+    createdAt: normalizeCreatedAt(row.createdAt),
     actor: {
       id: row.actorId,
       name: row.actorName,

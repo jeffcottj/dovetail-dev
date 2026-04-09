@@ -5,11 +5,13 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { KnowledgeBase } from '@dovetail/types';
 
-export function KbSwitcher({ knowledgeBases, currentSlug }: { knowledgeBases: KnowledgeBase[]; currentSlug: string }) {
+export function KbSwitcher({ knowledgeBases, currentSlug }: { knowledgeBases: KnowledgeBase[]; currentSlug: string | null }) {
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const currentKb = knowledgeBases.find((kb) => kb.slug === currentSlug) ?? knowledgeBases[0];
+  const currentKb = currentSlug
+    ? knowledgeBases.find((kb) => kb.slug === currentSlug) ?? null
+    : null;
 
   useEffect(() => {
     if (!open) return;
@@ -44,8 +46,6 @@ export function KbSwitcher({ knowledgeBases, currentSlug }: { knowledgeBases: Kn
     });
   }
 
-  if (!currentKb) return null;
-
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -67,7 +67,7 @@ export function KbSwitcher({ knowledgeBases, currentSlug }: { knowledgeBases: Kn
         <span className="mt-1 flex items-center justify-between gap-3">
           <span className="min-w-0 flex-1">
             <span className="block truncate text-base font-semibold text-sidebar-text-active">
-              {currentKb.name}
+              {currentKb?.name ?? 'Select a knowledge base'}
             </span>
           </span>
           <ChevronsUpDown className="h-4 w-4 shrink-0 text-sidebar-text/70" />
