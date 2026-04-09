@@ -36,13 +36,25 @@ export function buildAdminActivityInsert(input: BuildAdminActivityInput): InferI
   };
 }
 
-export function normalizeAdminActivityRow(row: AdminActivityRow): AdminActivityItem {
-  const createdAt = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt);
+function normalizeCreatedAt(createdAt: Date | string): string {
+  if (createdAt instanceof Date) {
+    return createdAt.toISOString();
+  }
 
+  if (createdAt.includes('T')) {
+    return createdAt.endsWith('Z') || /[+-]\d\d:\d\d$/.test(createdAt)
+      ? new Date(createdAt).toISOString()
+      : new Date(`${createdAt}Z`).toISOString();
+  }
+
+  return new Date(`${createdAt.replace(' ', 'T')}Z`).toISOString();
+}
+
+export function normalizeAdminActivityRow(row: AdminActivityRow): AdminActivityItem {
   return {
     id: row.id,
     kind: row.kind as AdminActivityKind,
-    createdAt: createdAt.toISOString(),
+    createdAt: normalizeCreatedAt(row.createdAt),
     actor: {
       id: row.actorId,
       name: row.actorName,

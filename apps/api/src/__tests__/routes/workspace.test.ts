@@ -141,7 +141,7 @@ describe('Workspace activity routes', () => {
         {
           id: 'evt-4',
           kind: 'article.created',
-          createdAt: '2026-03-28T15:00:00.000Z',
+          createdAt: '2026-04-09 00:34:24.123',
           actorId: 'user-3',
           actorName: 'Priya Shah',
           actorEmail: 'priya@example.com',
@@ -162,7 +162,7 @@ describe('Workspace activity routes', () => {
         {
           id: 'evt-4',
           kind: 'article.created',
-          createdAt: '2026-03-28T15:00:00.000Z',
+          createdAt: '2026-04-09T00:34:24.123Z',
           actor: {
             id: 'user-3',
             name: 'Priya Shah',
