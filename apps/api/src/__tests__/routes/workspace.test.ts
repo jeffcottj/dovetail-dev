@@ -136,6 +136,53 @@ describe('Workspace activity routes', () => {
       ]);
     });
 
+    it('normalizes article activity rows with string timestamps', async () => {
+      (db.execute as Mock).mockResolvedValueOnce([
+        {
+          id: 'evt-4',
+          kind: 'article.created',
+          createdAt: '2026-03-28T15:00:00.000Z',
+          actorId: 'user-3',
+          actorName: 'Priya Shah',
+          actorEmail: 'priya@example.com',
+          knowledgeBaseId: 'kb-2',
+          knowledgeBaseName: 'Benefits',
+          subjectId: 'article-3',
+          subjectLabel: 'Utility Assistance Guide',
+          metadata: { source: 'db.execute' },
+        },
+      ]);
+
+      const res = await supertest(app)
+        .get('/api/workspace/activity')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([
+        {
+          id: 'evt-4',
+          kind: 'article.created',
+          createdAt: '2026-03-28T15:00:00.000Z',
+          actor: {
+            id: 'user-3',
+            name: 'Priya Shah',
+            email: 'priya@example.com',
+          },
+          knowledgeBase: {
+            id: 'kb-2',
+            name: 'Benefits',
+          },
+          subject: {
+            id: 'article-3',
+            label: 'Utility Assistance Guide',
+          },
+          metadata: {
+            source: 'db.execute',
+          },
+        },
+      ]);
+    });
+
     it('filters out non-article activity kinds', async () => {
       (db.execute as Mock).mockResolvedValueOnce([
         {
