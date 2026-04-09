@@ -10,7 +10,7 @@ import { WorkspaceActivityFeed } from '../../components/WorkspaceActivityFeed';
 import { WorkspaceSidebar } from '../../components/WorkspaceSidebar';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import type { AdminActivityItem, Role } from '@dovetail/types';
+import type { AdminActivityItem, KnowledgeBase, Role } from '@dovetail/types';
 
 export default async function HomePage() {
   const session = await auth();
@@ -19,12 +19,29 @@ export default async function HomePage() {
 
   let activityItems: AdminActivityItem[] = [];
   let unavailableMessage: string | null = null;
+  let knowledgeBaseCount = 0;
+  let knowledgeBasesUnavailable = false;
 
   try {
     activityItems = await apiFetch<AdminActivityItem[]>('/api/workspace/activity');
   } catch {
     unavailableMessage = 'Recent activity is unavailable right now.';
   }
+
+  try {
+    const knowledgeBases = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
+    knowledgeBaseCount = knowledgeBases.length;
+  } catch {
+    knowledgeBasesUnavailable = true;
+  }
+
+  const helperDescription = knowledgeBasesUnavailable
+    ? 'Knowledge bases are unavailable right now. Please try again later or contact an admin if the problem continues.'
+    : knowledgeBaseCount === 0
+      ? isAdmin
+        ? 'No knowledge bases are available yet. Create one from the admin area to get this workspace started.'
+        : 'No knowledge bases are available yet. Contact an admin to get access or have one created.'
+      : 'Use the sidebar switcher to open a knowledge base and continue browsing articles.';
 
   return (
     <>
@@ -53,7 +70,7 @@ export default async function HomePage() {
                   Choose a knowledge base
                 </h2>
                 <p className="mt-2 text-sm text-ink-muted font-[family-name:var(--font-ui)]">
-                  Use the sidebar switcher to open a knowledge base and continue browsing articles.
+                  {helperDescription}
                 </p>
                 {isAdmin && (
                   <div className="mt-4">

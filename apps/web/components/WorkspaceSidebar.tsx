@@ -6,11 +6,12 @@ import { KbSwitcher } from './KbSwitcher';
 
 export async function WorkspaceSidebar() {
   let knowledgeBases: KnowledgeBase[] = [];
+  let knowledgeBasesUnavailable = false;
 
   try {
     knowledgeBases = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
   } catch {
-    // API unavailable
+    knowledgeBasesUnavailable = true;
   }
 
   return (
@@ -30,6 +31,15 @@ export async function WorkspaceSidebar() {
 
       <div className="px-3 py-3 border-b border-sidebar-hover">
         <KbSwitcher knowledgeBases={knowledgeBases} currentSlug={null} />
+        {knowledgeBasesUnavailable ? (
+          <p className="mt-3 text-sm font-[family-name:var(--font-ui)] text-sidebar-text/75">
+            Knowledge bases are unavailable right now.
+          </p>
+        ) : knowledgeBases.length === 0 ? (
+          <p className="mt-3 text-sm font-[family-name:var(--font-ui)] text-sidebar-text/75">
+            No knowledge bases are available yet.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex-1" />
