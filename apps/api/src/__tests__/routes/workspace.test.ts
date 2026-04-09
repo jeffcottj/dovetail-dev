@@ -26,6 +26,24 @@ vi.mock('../../utils/category-path.js', () => ({
 import { app } from '../../app.js';
 import { db } from '@dovetail/db';
 
+function makeSearchResult(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'article-1',
+    title: 'Legal Aid Overview',
+    slug: 'legal-aid-overview',
+    categoryId: 'cat-1',
+    knowledgeBaseId: 'kb-1',
+    knowledgeBaseName: 'Default',
+    knowledgeBaseSlug: 'default',
+    authorId: 'user-1',
+    status: 'published',
+    createdAt: new Date('2026-03-28T12:00:00.000Z'),
+    updatedAt: new Date('2026-03-28T12:00:00.000Z'),
+    rank: 0.5,
+    ...overrides,
+  };
+}
+
 describe('Workspace activity routes', () => {
   let viewerToken: string;
 
@@ -175,38 +193,34 @@ describe('Workspace search routes', () => {
     });
 
     it('returns mixed KB full-text search results', async () => {
-      (db.execute as Mock).mockResolvedValueOnce([
-        {
-          id: 'article-1',
-          title: 'Housing Benefits Overview',
-          slug: 'housing-benefits-overview',
-          categoryId: 'cat-1',
-          categoryPath: ['housing'],
-          knowledgeBaseId: 'kb-1',
-          knowledgeBaseName: 'Housing',
-          knowledgeBaseSlug: 'housing',
-          authorId: 'user-1',
-          status: 'published',
-          createdAt: new Date('2026-03-28T12:00:00.000Z'),
-          updatedAt: new Date('2026-03-28T12:00:00.000Z'),
-          rank: 0.91,
-        },
-        {
-          id: 'article-2',
-          title: 'Tenant Rights Overview',
-          slug: 'tenant-rights-overview',
-          categoryId: 'cat-2',
-          categoryPath: ['tenant'],
-          knowledgeBaseId: 'kb-2',
-          knowledgeBaseName: 'Tenant',
-          knowledgeBaseSlug: 'tenant',
-          authorId: 'user-2',
-          status: 'published',
-          createdAt: new Date('2026-03-28T11:00:00.000Z'),
-          updatedAt: new Date('2026-03-28T11:00:00.000Z'),
-          rank: 0.82,
-        },
-      ]);
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 2 }])
+        .mockResolvedValueOnce([
+          makeSearchResult({
+            id: 'article-1',
+            title: 'Housing Benefits Overview',
+            slug: 'housing-benefits-overview',
+            categoryId: 'cat-1',
+            knowledgeBaseId: 'kb-1',
+            knowledgeBaseName: 'Housing',
+            knowledgeBaseSlug: 'housing',
+            authorId: 'user-1',
+            rank: 0.91,
+          }),
+          makeSearchResult({
+            id: 'article-2',
+            title: 'Tenant Rights Overview',
+            slug: 'tenant-rights-overview',
+            categoryId: 'cat-2',
+            knowledgeBaseId: 'kb-2',
+            knowledgeBaseName: 'Tenant',
+            knowledgeBaseSlug: 'tenant',
+            authorId: 'user-2',
+            createdAt: new Date('2026-03-28T11:00:00.000Z'),
+            updatedAt: new Date('2026-03-28T11:00:00.000Z'),
+            rank: 0.82,
+          }),
+        ]);
 
       const res = await supertest(app)
         .get('/api/workspace/search?q=overview')
@@ -250,6 +264,26 @@ describe('Workspace search routes', () => {
         page: 1,
         limit: 20,
       });
+      expect(db.execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps total correct when a later page has no rows', async () => {
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 1 }])
+        .mockResolvedValueOnce([]);
+
+      const res = await supertest(app)
+        .get('/api/workspace/search?q=overview&page=2&limit=20')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [],
+        total: 1,
+        page: 2,
+        limit: 20,
+      });
+      expect(db.execute).toHaveBeenCalledTimes(2);
     });
   });
 });

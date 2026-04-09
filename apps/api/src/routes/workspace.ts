@@ -48,6 +48,15 @@ workspaceRouter.get('/search', authMiddleware, validateQuery(workspaceSearchSche
   const { q, page, limit } = res.locals.query as z.infer<typeof workspaceSearchSchema>;
   const offset = (page - 1) * limit;
 
+  const [{ count: total }] = (await db.execute(sql`
+    SELECT count(*) AS count
+    FROM articles a
+    INNER JOIN categories c ON c.id = a.category_id
+    INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
+    WHERE a.status = 'published'
+      AND a.search_vector @@ websearch_to_tsquery('english', ${q})
+  `)) as unknown as Array<{ count: string | number }>;
+
   const rows = (await db.execute(sql`
     SELECT
       a.id,
@@ -71,7 +80,7 @@ workspaceRouter.get('/search', authMiddleware, validateQuery(workspaceSearchSche
     ORDER BY ts_rank(a.search_vector, websearch_to_tsquery('english', ${q})) DESC
     LIMIT ${limit}
     OFFSET ${offset}
-  `)) as unknown as Array<WorkspaceSearchResult & { total?: number }>;
+  `)) as unknown as WorkspaceSearchResult[];
 
   const data = await Promise.all(
     rows.map(async (row) => ({
@@ -80,12 +89,10 @@ workspaceRouter.get('/search', authMiddleware, validateQuery(workspaceSearchSche
     })),
   );
 
-  const total = Number(rows[0]?.total ?? rows.length);
-
   res.json(
     paginate(
-      data.map(({ total: _total, ...row }) => row),
-      total,
+      data,
+      Number(total),
       { page, limit },
     ),
   );
