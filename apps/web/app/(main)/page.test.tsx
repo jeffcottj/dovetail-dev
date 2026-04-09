@@ -186,4 +186,29 @@ describe('HomePage', () => {
     expect(text).toContain('Knowledge bases are unavailable right now.');
     expect(text).toContain('Please try again later or contact an admin if the problem continues.');
   });
+
+  test('shows the explicit no-knowledge-bases-yet branch and fetches kb state once', async () => {
+    mockAuth.mockResolvedValue({ user: { role: 'viewer' } });
+    mockHasMinimumRole.mockReturnValue(false);
+    mockApiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/workspace/activity') {
+        return [];
+      }
+
+      if (path === '/api/knowledge-bases') {
+        return [];
+      }
+
+      throw new Error(`Unexpected path: ${path}`);
+    });
+
+    const { default: HomePage } = await import('./page');
+    const tree = await HomePage();
+    const text = await renderText(tree);
+
+    expect(text).toContain('KB Switcher:0:none');
+    expect(text).toContain('No knowledge bases are available yet.');
+    expect(text).toContain('Contact an admin to get access or have one created.');
+    expect(mockApiFetch.mock.calls.filter(([path]) => path === '/api/knowledge-bases')).toHaveLength(1);
+  });
 });

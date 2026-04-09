@@ -19,7 +19,7 @@ export default async function HomePage() {
 
   let activityItems: AdminActivityItem[] = [];
   let unavailableMessage: string | null = null;
-  let knowledgeBaseCount = 0;
+  let knowledgeBases: KnowledgeBase[] = [];
   let knowledgeBasesUnavailable = false;
 
   try {
@@ -29,15 +29,14 @@ export default async function HomePage() {
   }
 
   try {
-    const knowledgeBases = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-    knowledgeBaseCount = knowledgeBases.length;
+    knowledgeBases = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
   } catch {
     knowledgeBasesUnavailable = true;
   }
 
   const helperDescription = knowledgeBasesUnavailable
     ? 'Knowledge bases are unavailable right now. Please try again later or contact an admin if the problem continues.'
-    : knowledgeBaseCount === 0
+    : knowledgeBases.length === 0
       ? isAdmin
         ? 'No knowledge bases are available yet. Create one from the admin area to get this workspace started.'
         : 'No knowledge bases are available yet. Contact an admin to get access or have one created.'
@@ -46,7 +45,10 @@ export default async function HomePage() {
   return (
     <>
       <SidebarWrapper toggleClassName="top-15 -right-4 -translate-y-1/2">
-        <WorkspaceSidebar />
+        <WorkspaceSidebar
+          knowledgeBases={knowledgeBases}
+          knowledgeBasesUnavailable={knowledgeBasesUnavailable}
+        />
       </SidebarWrapper>
       <div className="flex-1 flex flex-col min-w-0">
         <header className="border-b border-border-light px-6 py-3 flex items-center justify-between">

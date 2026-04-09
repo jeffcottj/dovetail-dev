@@ -1,19 +1,15 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { KnowledgeBase } from '@dovetail/types';
-import { apiFetch } from '../lib/api';
 import { KbSwitcher } from './KbSwitcher';
 
-export async function WorkspaceSidebar() {
-  let knowledgeBases: KnowledgeBase[] = [];
-  let knowledgeBasesUnavailable = false;
-
-  try {
-    knowledgeBases = await apiFetch<KnowledgeBase[]>('/api/knowledge-bases');
-  } catch {
-    knowledgeBasesUnavailable = true;
-  }
-
+export function WorkspaceSidebar({
+  knowledgeBases,
+  knowledgeBasesUnavailable,
+}: {
+  knowledgeBases: KnowledgeBase[];
+  knowledgeBasesUnavailable: boolean;
+}) {
   return (
     <>
       <div className="h-24 flex items-center px-4 border-b border-sidebar-hover shrink-0">
