@@ -11,6 +11,7 @@ import { extractText } from '../utils/tiptap.js';
 import { resolveCategoryPath, buildCategoryPath } from '../utils/category-path.js';
 import { resolveRole, hasMinimumRole } from '../services/permissions.js';
 import { generateEmbeddings } from '../services/embedding-pipeline.js';
+import type { AuthKbRequest, KbRequest } from '../middleware/resolveKb.js';
 import type { Role } from '@dovetail/types';
 
 export const articlesRouter: Router = Router({ mergeParams: true });
@@ -61,6 +62,10 @@ const listQuerySchema = paginationSchema.extend({
   categoryId: z.string().uuid().optional(),
 });
 
+function withKnowledgeBaseSlug<T extends object>(article: T, kbSlug?: string) {
+  return kbSlug ? { ...article, knowledgeBaseSlug: kbSlug } : article;
+}
+
 async function loadScopedEditorArticle(req: AuthRequest, res: any, id: string) {
   const [article] = await db.select().from(articles).where(eq(articles.id, id));
   if (!article) {
@@ -90,7 +95,7 @@ async function loadScopedEditorArticle(req: AuthRequest, res: any, id: string) {
 }
 
 // GET /api/articles — paginated list
-articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (req, res) => {
+articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (req: KbRequest, res) => {
   const { page, limit, status, categoryId } = res.locals.query as z.infer<typeof listQuerySchema>;
   const offset = (page - 1) * limit;
 
@@ -125,7 +130,7 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (r
   // Enrich with category paths
   const enriched = await Promise.all(
     data.map(async (article) => ({
-      ...article,
+      ...withKnowledgeBaseSlug(article, req.kb?.slug),
       categoryPath: await buildCategoryPath(article.categoryId),
     })),
   );
@@ -134,7 +139,7 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (r
 });
 
 // GET /api/articles/by-path/* — resolve article via category path + article slug
-articlesRouter.get('/by-path/{*path}', authMiddleware, async (req, res) => {
+articlesRouter.get('/by-path/{*path}', authMiddleware, async (req: KbRequest, res) => {
   const pathParam = (req.params as any).path;
   // Express 5 wildcard params may be a string or array depending on path-to-regexp version
   const segments = Array.isArray(pathParam)
@@ -167,11 +172,11 @@ articlesRouter.get('/by-path/{*path}', authMiddleware, async (req, res) => {
   }
 
   const categoryPath = await buildCategoryPath(article.categoryId);
-  res.json({ ...article, categoryPath });
+  res.json(withKnowledgeBaseSlug({ ...article, categoryPath }, req.kb?.slug));
 });
 
 // GET /api/articles/:id
-articlesRouter.get('/:id', authMiddleware, async (req, res) => {
+articlesRouter.get('/:id', authMiddleware, async (req: KbRequest, res) => {
   const id = req.params.id as string;
   const [article] = await db.select().from(articles).where(eq(articles.id, id));
   if (!article) {
@@ -192,11 +197,11 @@ articlesRouter.get('/:id', authMiddleware, async (req, res) => {
   }
 
   const categoryPath = await buildCategoryPath(article.categoryId);
-  res.json({ ...article, categoryPath });
+  res.json(withKnowledgeBaseSlug({ ...article, categoryPath }, req.kb?.slug));
 });
 
 // POST /api/articles — create draft
-articlesRouter.post('/', authMiddleware, validateBody(createArticleSchema), async (req: AuthRequest, res) => {
+articlesRouter.post('/', authMiddleware, validateBody(createArticleSchema), async (req: AuthKbRequest, res) => {
   const { title, categoryId, content } = req.body;
   const slug = toSlug(title);
   const kbId = req.params.kbId as string | undefined;
@@ -294,14 +299,14 @@ articlesRouter.post('/', authMiddleware, validateBody(createArticleSchema), asyn
 
     void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
     const categoryPath = await buildCategoryPath(created.categoryId);
-    res.status(201).json({ ...created, categoryPath });
+    res.status(201).json(withKnowledgeBaseSlug({ ...created, categoryPath }, req.kb?.slug));
   } catch (err: any) {
     throw err;
   }
 });
 
 // PATCH /api/articles/:id — update (creates version)
-articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), async (req: AuthRequest, res) => {
+articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), async (req: AuthKbRequest, res) => {
   const id = req.params.id as string;
   const kbId = req.params.kbId as string | undefined;
 
@@ -462,12 +467,12 @@ articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), 
     if (didChange) {
       void generateEmbeddings(id).catch(err => console.error('Embedding generation failed:', err));
     }
-    res.json(result);
+    res.json(withKnowledgeBaseSlug(result, req.kb?.slug));
   }
 });
 
 // DELETE /api/articles/:id — archive (soft delete)
-articlesRouter.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
+articlesRouter.delete('/:id', authMiddleware, async (req: AuthKbRequest, res) => {
   const id = req.params.id as string;
   const article = await loadScopedEditorArticle(req, res, id);
   if (!article) {
@@ -484,11 +489,11 @@ articlesRouter.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
     res.status(409).json({ error: 'Article changed during archive' });
     return;
   }
-  res.json(archived);
+  res.json(withKnowledgeBaseSlug(archived, req.kb?.slug));
 });
 
 // POST /api/articles/:id/publish
-articlesRouter.post('/:id/publish', authMiddleware, async (req: AuthRequest, res) => {
+articlesRouter.post('/:id/publish', authMiddleware, async (req: AuthKbRequest, res) => {
   const id = req.params.id as string;
   const article = await loadScopedEditorArticle(req, res, id);
   if (!article) {
@@ -505,5 +510,5 @@ articlesRouter.post('/:id/publish', authMiddleware, async (req: AuthRequest, res
     res.status(409).json({ error: 'Article changed during publish' });
     return;
   }
-  res.json(published);
+  res.json(withKnowledgeBaseSlug(published, req.kb?.slug));
 });

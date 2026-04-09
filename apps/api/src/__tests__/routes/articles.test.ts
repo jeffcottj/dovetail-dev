@@ -127,6 +127,22 @@ describe('Article routes', () => {
       expect(res.body.id).toBe(ART_ID);
     });
 
+    it('includes knowledgeBaseSlug in the response', async () => {
+      (db.select as Mock)
+        .mockReturnValueOnce(createChain([mockKb]))
+        .mockReturnValueOnce(createChain([mockArticle]))
+        .mockReturnValueOnce(createChain([{ knowledgeBaseId: 'kb-1' }]));
+      (buildCategoryPath as Mock).mockResolvedValueOnce(['housing', 'repairs']);
+
+      const res = await supertest(app)
+        .get(`/api/knowledge-bases/kb-1/articles/${ART_ID}`)
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.knowledgeBaseSlug).toBe('default');
+      expect(res.body.categoryPath).toEqual(['housing', 'repairs']);
+    });
+
     it('returns 404 when the article belongs to another knowledge base', async () => {
       (db.select as Mock)
         .mockReturnValueOnce(createChain([mockKb]))
@@ -157,6 +173,7 @@ describe('Article routes', () => {
     it('returns article by category path and slug', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (resolveCategoryPath as Mock).mockResolvedValueOnce(CAT_ID);
+      (buildCategoryPath as Mock).mockResolvedValueOnce(['housing']);
       (db.select as Mock).mockReturnValueOnce(createChain([mockArticle]));
 
       const res = await supertest(app)
@@ -165,6 +182,7 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.slug).toBe('test-article');
+      expect(res.body.knowledgeBaseSlug).toBe('default');
     });
   });
 
@@ -270,6 +288,7 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.categoryPath).toEqual(['housing', 'rental']);
+      expect(res.body.knowledgeBaseSlug).toBe('default');
       expect(buildCategoryPath).toHaveBeenCalledWith(CAT_ID);
     });
 
@@ -702,6 +721,7 @@ describe('Article routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('published');
+      expect(res.body.knowledgeBaseSlug).toBe('default');
     });
 
     it('returns 404 when article not found', async () => {
