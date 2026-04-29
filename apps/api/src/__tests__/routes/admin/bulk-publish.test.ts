@@ -35,6 +35,7 @@ describe('POST /api/knowledge-bases/:kbId/admin/articles/bulk-publish', () => {
 
   it('returns 403 for non-admin users', async () => {
     (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+    (db.execute as Mock).mockResolvedValueOnce([{ defaultAccess: 'org_viewer', kbRole: null }]);
     const res = await supertest(app)
       .post('/api/knowledge-bases/kb-1/admin/articles/bulk-publish')
       .set('Cookie', `${COOKIE_NAME}=${editorToken}`)

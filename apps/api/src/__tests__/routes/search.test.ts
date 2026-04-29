@@ -45,7 +45,11 @@ const mockSearchResult = {
   title: 'Legal Aid Overview',
   slug: 'legal-aid-overview',
   categoryId: CAT_ID,
+  knowledgeBaseId: 'kb-1',
+  knowledgeBaseName: 'Default',
+  knowledgeBaseSlug: 'default',
   authorId: 'user-1',
+  lastEditedById: 'user-1',
   status: 'published',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -76,12 +80,10 @@ describe('Search routes', () => {
     });
 
     it('returns search results for a query', async () => {
-      const countChain = createChain([{ count: 1 }]);
-      const dataChain = createChain([mockSearchResult]);
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(countChain)
-        .mockReturnValueOnce(dataChain);
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 1 }])
+        .mockResolvedValueOnce([mockSearchResult]);
 
       const res = await supertest(app)
         .get('/api/knowledge-bases/kb-1/search?q=legal')
@@ -95,12 +97,10 @@ describe('Search routes', () => {
     });
 
     it('supports pagination', async () => {
-      const countChain = createChain([{ count: 50 }]);
-      const dataChain = createChain([mockSearchResult]);
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(countChain)
-        .mockReturnValueOnce(dataChain);
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 50 }])
+        .mockResolvedValueOnce([mockSearchResult]);
 
       const res = await supertest(app)
         .get('/api/knowledge-bases/kb-1/search?q=legal&page=2&limit=10')
@@ -112,12 +112,10 @@ describe('Search routes', () => {
     });
 
     it('supports categoryId filter', async () => {
-      const countChain = createChain([{ count: 1 }]);
-      const dataChain = createChain([mockSearchResult]);
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(countChain)
-        .mockReturnValueOnce(dataChain);
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 1 }])
+        .mockResolvedValueOnce([mockSearchResult]);
 
       const res = await supertest(app)
         .get(`/api/knowledge-bases/kb-1/search?q=legal&categoryId=${CAT_ID}`)
@@ -128,12 +126,10 @@ describe('Search routes', () => {
     });
 
     it('accepts mode=fulltext explicitly', async () => {
-      const countChain = createChain([{ count: 1 }]);
-      const dataChain = createChain([mockSearchResult]);
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(countChain)
-        .mockReturnValueOnce(dataChain);
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 1 }])
+        .mockResolvedValueOnce([mockSearchResult]);
 
       const res = await supertest(app)
         .get('/api/knowledge-bases/kb-1/search?q=legal&mode=fulltext')
@@ -187,16 +183,11 @@ describe('Search routes', () => {
 
   describe('GET /api/knowledge-bases/kb-1/search?mode=hybrid', () => {
     it('returns merged results from fulltext and semantic', async () => {
-      // Fulltext: count + results
-      const countChain = createChain([{ count: 1 }]);
-      const fulltextChain = createChain([mockSearchResult]);
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(countChain)
-        .mockReturnValueOnce(fulltextChain);
-
-      // Semantic results
-      (db.execute as Mock).mockResolvedValue([
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 1 }])
+        .mockResolvedValueOnce([mockSearchResult])
+        .mockResolvedValueOnce([
         {
           article_id: ART_ID_2,
           title: 'Tenant Rights',
@@ -221,15 +212,11 @@ describe('Search routes', () => {
     });
 
     it('deduplicates articles appearing in both result sets', async () => {
-      // Same article in both fulltext and semantic
-      const countChain = createChain([{ count: 1 }]);
-      const fulltextChain = createChain([mockSearchResult]);
-      (db.select as Mock)
-        .mockReturnValueOnce(createChain([mockKb]))
-        .mockReturnValueOnce(countChain)
-        .mockReturnValueOnce(fulltextChain);
-
-      (db.execute as Mock).mockResolvedValue([
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 1 }])
+        .mockResolvedValueOnce([mockSearchResult])
+        .mockResolvedValueOnce([
         {
           article_id: ART_ID_1, // Same as fulltext result
           title: 'Legal Aid Overview',

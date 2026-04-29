@@ -22,7 +22,22 @@ import { app } from '../../app.js';
 import { adminActivityEvents, db } from '@dovetail/db';
 import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 
-const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() };
+const mockKb = {
+  id: 'kb-1',
+  name: 'Default',
+  slug: 'default',
+  description: null,
+  defaultAccess: 'org_viewer' as const,
+  createdAt: new Date(),
+};
+const privateKb = {
+  id: 'kb-2',
+  name: 'Private',
+  slug: 'private',
+  description: null,
+  defaultAccess: 'private' as const,
+  createdAt: new Date(),
+};
 
 describe('Knowledge Base routes', () => {
   let viewerToken: string;
@@ -42,9 +57,8 @@ describe('Knowledge Base routes', () => {
       expect(res.status).toBe(401);
     });
 
-    it('returns list of KBs for any authenticated user', async () => {
-      const mockKbs = [{ id: 'kb-1', name: 'Default', slug: 'default', description: null, createdAt: new Date() }];
-      (db.select as Mock).mockReturnValue(createChain(mockKbs));
+    it('returns only visible KBs for an authenticated viewer', async () => {
+      (db.execute as Mock).mockResolvedValueOnce([mockKb]);
 
       const res = await supertest(app)
         .get('/api/knowledge-bases')
@@ -53,6 +67,28 @@ describe('Knowledge Base routes', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
       expect(res.body[0].name).toBe('Default');
+    });
+
+    it('includes private KBs for users with explicit KB or category access', async () => {
+      (db.execute as Mock).mockResolvedValueOnce([mockKb, privateKb]);
+
+      const res = await supertest(app)
+        .get('/api/knowledge-bases')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.map((kb: { id: string }) => kb.id)).toEqual(['kb-1', 'kb-2']);
+    });
+
+    it('returns all KBs for a global admin', async () => {
+      (db.execute as Mock).mockResolvedValueOnce([mockKb, privateKb]);
+
+      const res = await supertest(app)
+        .get('/api/knowledge-bases')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
     });
   });
 
@@ -65,11 +101,19 @@ describe('Knowledge Base routes', () => {
       expect(res.status).toBe(403);
     });
 
-    it('creates a KB for admin', async () => {
-      const created = { id: 'kb-new', name: 'Housing Law', slug: 'housing-law', description: null, createdAt: new Date() };
+    it('creates a KB for admin with the default org-visible policy', async () => {
+      const created = {
+        id: 'kb-new',
+        name: 'Housing Law',
+        slug: 'housing-law',
+        description: null,
+        defaultAccess: 'org_viewer' as const,
+        createdAt: new Date(),
+      };
+      let createKbInsert: ReturnType<typeof createChain>;
       let activityInsert: ReturnType<typeof createChain>;
       (db.transaction as Mock).mockImplementation(async (fn: Function) => {
-        const createKbInsert = createChain([created]);
+        createKbInsert = createChain([created]);
         activityInsert = createChain([{ id: 'evt-kb-create' }]);
         const tx = {
           insert: vi.fn()
@@ -86,12 +130,98 @@ describe('Knowledge Base routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.slug).toBe('housing-law');
+      expect(createKbInsert!.values).toHaveBeenCalledWith({
+        name: 'Housing Law',
+        slug: 'housing-law',
+        description: null,
+        defaultAccess: 'org_viewer',
+      });
       expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
         kind: 'kb.created',
         actorId: 'user-3',
         knowledgeBaseId: created.id,
         subjectId: created.id,
         subjectLabel: created.name,
+        metadata: { defaultAccess: 'org_viewer' },
+      }));
+    });
+
+    it('creates a private KB for admin', async () => {
+      const created = {
+        id: 'kb-private-new',
+        name: 'Private Law',
+        slug: 'private-law',
+        description: null,
+        defaultAccess: 'private' as const,
+        createdAt: new Date(),
+      };
+      let createKbInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        createKbInsert = createChain([created]);
+        const tx = {
+          insert: vi.fn()
+            .mockReturnValueOnce(createKbInsert)
+            .mockReturnValueOnce(createChain([{ id: 'evt-kb-create' }])),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ name: 'Private Law', defaultAccess: 'private' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.defaultAccess).toBe('private');
+      expect(createKbInsert!.values).toHaveBeenCalledWith({
+        name: 'Private Law',
+        slug: 'private-law',
+        description: null,
+        defaultAccess: 'private',
+      });
+    });
+
+    it('rejects invalid default access on create', async () => {
+      const res = await supertest(app)
+        .post('/api/knowledge-bases')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ name: 'Bad KB', defaultAccess: 'public' });
+
+      expect(res.status).toBe(400);
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it('preserves requested default access when retrying a slug conflict', async () => {
+      const created = {
+        id: 'kb-new',
+        name: 'Housing Law',
+        slug: 'housing-law-retry',
+        description: null,
+        defaultAccess: 'private' as const,
+        createdAt: new Date(),
+      };
+      const duplicateSlugError = { code: '23505', constraint_name: 'knowledge_bases_slug_unique' };
+      let retryInsert: ReturnType<typeof createChain>;
+      (db.transaction as Mock)
+        .mockRejectedValueOnce(duplicateSlugError)
+        .mockImplementationOnce(async (fn: Function) => {
+          retryInsert = createChain([created]);
+          const tx = {
+            insert: vi.fn()
+              .mockReturnValueOnce(retryInsert)
+              .mockReturnValueOnce(createChain([{ id: 'evt-kb-create' }])),
+          };
+          return fn(tx);
+        });
+
+      const res = await supertest(app)
+        .post('/api/knowledge-bases')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ name: 'Housing Law', defaultAccess: 'private' });
+
+      expect(res.status).toBe(201);
+      expect(retryInsert!.values).toHaveBeenCalledWith(expect.objectContaining({
+        defaultAccess: 'private',
       }));
     });
   });
@@ -99,6 +229,7 @@ describe('Knowledge Base routes', () => {
   describe('GET /api/knowledge-bases/:id', () => {
     it('returns KB details', async () => {
       (db.select as Mock).mockReturnValue(createChain([mockKb]));
+      (db.execute as Mock).mockResolvedValueOnce([{ defaultAccess: 'org_viewer', kbRole: null }]);
 
       const res = await supertest(app)
         .get('/api/knowledge-bases/kb-1')
@@ -106,6 +237,31 @@ describe('Knowledge Base routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe('Default');
+    });
+
+    it('returns 404 for an invisible private KB', async () => {
+      (db.select as Mock).mockReturnValue(createChain([privateKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ defaultAccess: 'private', kbRole: null }])
+        .mockResolvedValueOnce([]);
+
+      const res = await supertest(app)
+        .get('/api/knowledge-bases/kb-2')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('returns private KB details for a global admin', async () => {
+      (db.select as Mock).mockReturnValue(createChain([privateKb]));
+
+      const res = await supertest(app)
+        .get('/api/knowledge-bases/kb-2')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.name).toBe('Private');
+      expect(db.execute).not.toHaveBeenCalled();
     });
 
     it('returns 404 when not found', async () => {
@@ -121,8 +277,25 @@ describe('Knowledge Base routes', () => {
 
   describe('PATCH /api/knowledge-bases/:id', () => {
     it('updates KB for admin', async () => {
-      const updated = { id: 'kb-1', name: 'Updated', slug: 'updated', description: 'desc', createdAt: new Date() };
-      (db.update as Mock).mockReturnValue(createChain([updated]));
+      const updated = {
+        id: 'kb-1',
+        name: 'Updated',
+        slug: 'updated',
+        description: 'desc',
+        defaultAccess: 'org_viewer' as const,
+        createdAt: new Date(),
+      };
+      let updateChain: ReturnType<typeof createChain>;
+      let tx: { update: ReturnType<typeof vi.fn>; insert: ReturnType<typeof vi.fn> };
+      (db.select as Mock).mockReturnValue(createChain([mockKb]));
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        updateChain = createChain([updated]);
+        tx = {
+          update: vi.fn().mockReturnValueOnce(updateChain),
+          insert: vi.fn(),
+        };
+        return fn(tx);
+      });
 
       const res = await supertest(app)
         .patch('/api/knowledge-bases/kb-1')
@@ -131,6 +304,88 @@ describe('Knowledge Base routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe('Updated');
+      expect(updateChain!.set).toHaveBeenCalledWith({
+        name: 'Updated',
+        slug: 'updated',
+        description: 'desc',
+      });
+      expect(tx!.insert).not.toHaveBeenCalled();
+    });
+
+    it('updates default access for a global admin and records activity', async () => {
+      const updated = { ...mockKb, defaultAccess: 'private' as const };
+      let activityInsert: ReturnType<typeof createChain>;
+      (db.select as Mock).mockReturnValue(createChain([mockKb]));
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-access-change' }]);
+        const tx = {
+          update: vi.fn().mockReturnValueOnce(createChain([updated])),
+          insert: vi.fn().mockReturnValueOnce(activityInsert),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ defaultAccess: 'private' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.defaultAccess).toBe('private');
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'kb.access_changed',
+        actorId: 'user-3',
+        knowledgeBaseId: 'kb-1',
+        subjectId: 'kb-1',
+        subjectLabel: 'Default',
+        metadata: { from: 'org_viewer', to: 'private' },
+      }));
+    });
+
+    it('updates default access for an explicit KB admin', async () => {
+      const updated = { ...privateKb, defaultAccess: 'org_viewer' as const };
+      (db.select as Mock).mockReturnValue(createChain([privateKb]));
+      (db.execute as Mock).mockResolvedValueOnce([{ defaultAccess: 'private', kbRole: 'admin' }]);
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        const tx = {
+          update: vi.fn().mockReturnValueOnce(createChain([updated])),
+          insert: vi.fn().mockReturnValueOnce(createChain([{ id: 'evt-access-change' }])),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .patch('/api/knowledge-bases/kb-2')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`)
+        .send({ defaultAccess: 'org_viewer' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.defaultAccess).toBe('org_viewer');
+    });
+
+    it('returns 403 when a non-admin tries to update default access', async () => {
+      (db.select as Mock).mockReturnValue(createChain([mockKb]));
+      (db.execute as Mock).mockResolvedValueOnce([{ defaultAccess: 'org_viewer', kbRole: null }]);
+
+      const res = await supertest(app)
+        .patch('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`)
+        .send({ defaultAccess: 'private' });
+
+      expect(res.status).toBe(403);
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid default access on update', async () => {
+      (db.select as Mock).mockReturnValue(createChain([mockKb]));
+
+      const res = await supertest(app)
+        .patch('/api/knowledge-bases/kb-1')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`)
+        .send({ defaultAccess: 'public' });
+
+      expect(res.status).toBe(400);
+      expect(db.transaction).not.toHaveBeenCalled();
     });
   });
 

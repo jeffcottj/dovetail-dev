@@ -216,6 +216,7 @@ export class ImportEngine {
       slug,
       categoryId,
       authorId: this.opts.userId,
+      lastEditedById: this.opts.userId,
       content,
       plainText,
       status: this.opts.defaultStatus,

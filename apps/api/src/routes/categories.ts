@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, categories, articles } from '@dovetail/db';
-import { authMiddleware } from '../middleware/auth.js';
-import { requireRole } from '../middleware/requireRole.js';
+import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
+import { canManageCategory } from '../services/permissions.js';
 import { validateBody } from '../utils/validate.js';
 import { toSlug } from '../utils/slug.js';
 import type { KbRequest } from '../middleware/resolveKb.js';
+import type { Role } from '@dovetail/types';
 
 export const categoriesRouter: Router = Router({ mergeParams: true });
 
@@ -29,12 +30,33 @@ categoriesRouter.get('/', authMiddleware, async (req: KbRequest, res) => {
 categoriesRouter.post(
   '/',
   authMiddleware,
-  requireRole('editor'),
   validateBody(createCategorySchema),
-  async (req: KbRequest, res) => {
+  async (req: AuthRequest & KbRequest, res) => {
     const kbId = req.params.kbId as string;
     const { name, parentId } = req.body;
     const slug = toSlug(name);
+    const canManage = await canManageCategory({
+      userId: req.user!.id,
+      globalRole: req.user!.role as Role,
+      categoryId: parentId ?? undefined,
+      knowledgeBaseId: kbId,
+      requiredRole: 'editor',
+    });
+    if (!canManage) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    if (parentId) {
+      const [parent] = await db.select({ knowledgeBaseId: categories.knowledgeBaseId })
+        .from(categories)
+        .where(eq(categories.id, parentId));
+      if (parent?.knowledgeBaseId !== kbId) {
+        res.status(404).json({ error: 'Parent category not found' });
+        return;
+      }
+    }
+
     try {
       const [created] = await db.insert(categories).values({
         name, slug, parentId: parentId ?? null, knowledgeBaseId: kbId,
@@ -57,11 +79,40 @@ categoriesRouter.post(
 categoriesRouter.patch(
   '/:id',
   authMiddleware,
-  requireRole('editor'),
   validateBody(updateCategorySchema),
-  async (req: KbRequest, res) => {
+  async (req: AuthRequest & KbRequest, res) => {
     const id = req.params.id as string;
     const kbId = req.params.kbId as string;
+    const [category] = await db.select({ id: categories.id, knowledgeBaseId: categories.knowledgeBaseId })
+      .from(categories)
+      .where(and(eq(categories.id, id), eq(categories.knowledgeBaseId, kbId)));
+    if (!category) {
+      res.status(404).json({ error: 'Category not found' });
+      return;
+    }
+
+    const canManage = await canManageCategory({
+      userId: req.user!.id,
+      globalRole: req.user!.role as Role,
+      categoryId: id,
+      knowledgeBaseId: kbId,
+      requiredRole: 'editor',
+    });
+    if (!canManage) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    if (req.body.parentId) {
+      const [parent] = await db.select({ knowledgeBaseId: categories.knowledgeBaseId })
+        .from(categories)
+        .where(eq(categories.id, req.body.parentId));
+      if (parent?.knowledgeBaseId !== kbId) {
+        res.status(404).json({ error: 'Parent category not found' });
+        return;
+      }
+    }
+
     const updates: Record<string, unknown> = {};
     if (req.body.name !== undefined) {
       updates.name = req.body.name;
@@ -72,17 +123,24 @@ categoriesRouter.patch(
     }
 
     const [updated] = await db.update(categories).set(updates).where(and(eq(categories.id, id), eq(categories.knowledgeBaseId, kbId))).returning();
-    if (!updated) {
-      res.status(404).json({ error: 'Category not found' });
-      return;
-    }
     res.json(updated);
   },
 );
 
-categoriesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: KbRequest, res) => {
+categoriesRouter.delete('/:id', authMiddleware, async (req: AuthRequest & KbRequest, res) => {
   const id = req.params.id as string;
   const kbId = req.params.kbId as string;
+  const canManage = await canManageCategory({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    categoryId: id,
+    knowledgeBaseId: kbId,
+    requiredRole: 'admin',
+  });
+  if (!canManage) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const [childCount] = await db
     .select({ count: sql<number>`count(*)` })

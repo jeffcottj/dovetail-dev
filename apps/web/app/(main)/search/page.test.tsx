@@ -49,6 +49,8 @@ vi.mock('next/link', () => ({
 
 vi.mock('lucide-react', () => ({
   Search: () => <svg data-icon="Search" />,
+  SlidersHorizontal: () => <svg data-icon="SlidersHorizontal" />,
+  X: () => <svg data-icon="X" />,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -129,7 +131,7 @@ describe('WorkspaceSearchPage', () => {
     expect(html).toContain('id="main-content"');
     expect(html).toContain('Search results');
     expect(html).toContain('Housing');
-    expect(html).toContain('Updated');
+    expect(html).toContain('Last edited');
     expect(html).toContain('2026');
     expect(html).toContain('/kb/housing/articles/tenant/rights/rent-stabilization');
   });

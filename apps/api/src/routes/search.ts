@@ -1,12 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, eq, gte, lte, inArray, sql } from 'drizzle-orm';
-import { db, articles, articleTags } from '@dovetail/db';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
-import { createEmbeddingProvider } from '../services/embeddings.js';
-import { buildCategoryPath } from '../utils/category-path.js';
+import { searchArticles } from '../services/search.js';
+import type { Role } from '@dovetail/types';
 
 export const searchRouter: Router = Router({ mergeParams: true });
 
@@ -14,184 +12,34 @@ const searchQuerySchema = paginationSchema.extend({
   q: z.string().min(1),
   mode: z.enum(['fulltext', 'semantic', 'hybrid']).default('fulltext'),
   categoryId: z.string().uuid().optional(),
-  authorId: z.string().uuid().optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
-  tags: z.string().optional(), // comma-separated tag IDs
+  tags: z.string().optional(),
+  onlyEditable: z.enum(['true', 'false']).optional().transform((value) => value === 'true').default(false),
 });
 
-// Reciprocal Rank Fusion — merges two ranked lists into one
-function reciprocalRankFusion(
-  fulltextResults: { id: string }[],
-  semanticResults: { id: string }[],
-  k = 60,
-): string[] {
-  const scores = new Map<string, number>();
-
-  fulltextResults.forEach((r, rank) => {
-    scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + rank + 1));
-  });
-  semanticResults.forEach((r, rank) => {
-    scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + rank + 1));
-  });
-
-  return [...scores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([id]) => id);
+function tagIdsFromQuery(tags?: string) {
+  return tags?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? [];
 }
 
-// Build WHERE conditions shared by fulltext and hybrid modes
-function buildFilterConditions(params: {
-  knowledgeBaseId: string;
-  categoryId?: string;
-  authorId?: string;
-  from?: string;
-  to?: string;
-  tags?: string;
-}) {
-  const conditions: ReturnType<typeof eq>[] = [];
-  conditions.push(eq(articles.status, 'published'));
-  // Scope to KB via categories
-  conditions.push(
-    inArray(articles.categoryId, sql`(SELECT id FROM categories WHERE knowledge_base_id = ${params.knowledgeBaseId})`),
-  );
-  if (params.categoryId) conditions.push(eq(articles.categoryId, params.categoryId));
-  if (params.authorId) conditions.push(eq(articles.authorId, params.authorId));
-  if (params.from) conditions.push(gte(articles.createdAt, new Date(params.from)));
-  if (params.to) conditions.push(lte(articles.createdAt, new Date(params.to)));
-  if (params.tags) {
-    const tagIds = params.tags.split(',').map((t) => t.trim()).filter(Boolean);
-    if (tagIds.length > 0) {
-      conditions.push(
-        inArray(articles.id, sql`(SELECT article_id FROM article_tags WHERE tag_id IN (${sql.join(tagIds.map(id => sql`${id}`), sql`,`)}))`),
-      );
-    }
-  }
-  return conditions;
-}
-
-// Full-text search using tsvector
-async function fulltextSearch(q: string, conditions: ReturnType<typeof eq>[], limit: number, offset: number) {
-  conditions.push(sql`search_vector @@ websearch_to_tsquery('english', ${q})`);
-  const whereClause = and(...conditions);
-
-  const [{ count: total }] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(articles)
-    .where(whereClause);
-
-  const data = await db
-    .select({
-      id: articles.id,
-      title: articles.title,
-      slug: articles.slug,
-      categoryId: articles.categoryId,
-      authorId: articles.authorId,
-      status: articles.status,
-      createdAt: articles.createdAt,
-      updatedAt: articles.updatedAt,
-      rank: sql<number>`ts_rank(search_vector, websearch_to_tsquery('english', ${q}))`,
-    })
-    .from(articles)
-    .where(whereClause)
-    .orderBy(sql`ts_rank(search_vector, websearch_to_tsquery('english', ${q})) DESC`)
-    .limit(limit)
-    .offset(offset);
-
-  const enriched = await Promise.all(
-    data.map(async (article) => ({
-      ...article,
-      categoryPath: await buildCategoryPath(article.categoryId),
-    })),
-  );
-
-  return { data: enriched, total: Number(total) };
-}
-
-// Semantic search using pgvector cosine similarity
-async function semanticSearch(q: string, limit: number, knowledgeBaseId: string, categoryId?: string) {
-  const provider = createEmbeddingProvider();
-  const queryEmbedding = await provider.embed(q);
-  const vectorLiteral = `[${queryEmbedding.join(',')}]`;
-
-  const kbFilter = sql`AND a.category_id IN (SELECT id FROM categories WHERE knowledge_base_id = ${knowledgeBaseId})`;
-  const categoryFilter = categoryId
-    ? sql`AND a.category_id = ${categoryId}`
-    : sql``;
-
-  const results = await db.execute(sql`
-    SELECT ae.article_id, ae.chunk_text,
-           1 - (ae.embedding <=> ${vectorLiteral}::vector) AS similarity,
-           a.title, a.slug, a.category_id, a.author_id,
-           a.status, a.created_at, a.updated_at
-    FROM article_embeddings ae
-    JOIN articles a ON a.id = ae.article_id
-    WHERE a.status = 'published' ${kbFilter} ${categoryFilter}
-    ORDER BY ae.embedding <=> ${vectorLiteral}::vector
-    LIMIT ${limit}
-  `);
-
-  const enriched = await Promise.all(
-    (results as any[]).map(async (r) => ({
-      id: r.article_id,
-      title: r.title,
-      slug: r.slug,
-      categoryId: r.category_id,
-      categoryPath: await buildCategoryPath(r.category_id),
-      authorId: r.author_id,
-      status: r.status,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-      chunkText: r.chunk_text,
-      similarity: parseFloat(r.similarity),
-    })),
-  );
-
-  return enriched;
-}
-
-searchRouter.get('/', authMiddleware, validateQuery(searchQuerySchema), async (req, res) => {
+searchRouter.get('/', authMiddleware, validateQuery(searchQuerySchema), async (req: AuthRequest, res) => {
   const kbId = req.params.kbId as string;
-  const { q, mode, categoryId, authorId, from, to, tags: tagFilter, page, limit } = res.locals.query as z.infer<typeof searchQuerySchema>;
-  const offset = (page - 1) * limit;
+  const query = res.locals.query as z.infer<typeof searchQuerySchema>;
 
-  if (mode === 'fulltext') {
-    const conditions = buildFilterConditions({ knowledgeBaseId: kbId, categoryId, authorId, from, to, tags: tagFilter });
-    const { data, total } = await fulltextSearch(q, conditions, limit, offset);
-    res.json(paginate(data, total, { page, limit }));
-    return;
-  }
+  const result = await searchArticles({
+    q: query.q,
+    mode: query.mode,
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    knowledgeBaseIds: [kbId],
+    categoryId: query.categoryId,
+    tagIds: tagIdsFromQuery(query.tags),
+    updatedFrom: query.from,
+    updatedTo: query.to,
+    onlyEditable: query.onlyEditable,
+    page: query.page,
+    limit: query.limit,
+  });
 
-  if (mode === 'semantic') {
-    const results = await semanticSearch(q, limit, kbId, categoryId);
-    res.json(paginate(results, results.length, { page, limit }));
-    return;
-  }
-
-  // mode === 'hybrid': run both in parallel, merge with RRF
-  const conditions = buildFilterConditions({ knowledgeBaseId: kbId, categoryId, authorId, from, to, tags: tagFilter });
-  const [fulltextResult, semanticResults] = await Promise.all([
-    fulltextSearch(q, conditions, limit, offset),
-    semanticSearch(q, limit, kbId, categoryId),
-  ]);
-
-  const rankedIds = reciprocalRankFusion(fulltextResult.data, semanticResults);
-
-  // Build a lookup from both result sets
-  const resultMap = new Map<string, any>();
-  for (const r of fulltextResult.data) {
-    resultMap.set(r.id, r);
-  }
-  for (const r of semanticResults) {
-    if (!resultMap.has(r.id)) {
-      resultMap.set(r.id, r);
-    }
-  }
-
-  // Return results in RRF order, paginated
-  const mergedData = rankedIds
-    .filter((id) => resultMap.has(id))
-    .map((id) => resultMap.get(id)!);
-
-  res.json(paginate(mergedData, mergedData.length, { page, limit }));
+  res.json(paginate(result.data, result.total, { page: query.page, limit: query.limit }));
 });

@@ -26,6 +26,7 @@ const mockKb = {
   name: 'Housing',
   slug: 'housing',
   description: null,
+  defaultAccess: 'org_viewer' as const,
   createdAt: new Date('2026-03-28T09:00:00.000Z'),
 };
 
@@ -62,7 +63,7 @@ describe('Knowledge base admin overview routes', () => {
 
     it('returns 403 for a non-admin without a KB admin role', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
-      (db.execute as Mock).mockResolvedValueOnce([]);
+      (db.execute as Mock).mockResolvedValueOnce([{ defaultAccess: 'org_viewer', kbRole: null }]);
 
       const res = await supertest(app)
         .get('/api/knowledge-bases/kb-1/admin/overview')
@@ -132,7 +133,7 @@ describe('Knowledge base admin overview routes', () => {
         .mockReturnValueOnce(createChain([{ count: 3 }]))
         .mockReturnValueOnce(createChain([{ count: 11 }]));
       (db.execute as Mock)
-        .mockResolvedValueOnce([{ role: 'admin' }])
+        .mockResolvedValueOnce([{ defaultAccess: 'private', kbRole: 'admin' }])
         .mockResolvedValueOnce([
           {
             id: 'evt-3',

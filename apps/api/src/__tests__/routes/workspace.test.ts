@@ -23,6 +23,14 @@ vi.mock('../../utils/category-path.js', () => ({
   )),
 }));
 
+vi.mock('../../services/permissions.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/permissions.js')>();
+  return {
+    ...actual,
+    listVisibleKnowledgeBaseIds: vi.fn().mockResolvedValue(['kb-1', 'kb-2']),
+  };
+});
+
 import { app } from '../../app.js';
 import { db } from '@dovetail/db';
 

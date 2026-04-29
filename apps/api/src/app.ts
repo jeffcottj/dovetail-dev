@@ -28,17 +28,17 @@ import { meRouter } from './routes/me.js';
 app.use('/api/me', meRouter);
 
 import { categoriesRouter } from './routes/categories.js';
-import { resolveKb } from './middleware/resolveKb.js';
-app.use('/api/knowledge-bases/:kbId/categories', resolveKb, categoriesRouter);
+import { resolveKb, requireVisibleKb } from './middleware/resolveKb.js';
+app.use('/api/knowledge-bases/:kbId/categories', authMiddleware, resolveKb, requireVisibleKb, categoriesRouter);
 
 import { articlesRouter } from './routes/articles.js';
-app.use('/api/knowledge-bases/:kbId/articles', resolveKb, articlesRouter);
+app.use('/api/knowledge-bases/:kbId/articles', authMiddleware, resolveKb, requireVisibleKb, articlesRouter);
 
 import { versionsRouter } from './routes/versions.js';
-app.use('/api/knowledge-bases/:kbId/articles/:id/versions', resolveKb, versionsRouter);
+app.use('/api/knowledge-bases/:kbId/articles/:id/versions', authMiddleware, resolveKb, requireVisibleKb, versionsRouter);
 
 import { searchRouter } from './routes/search.js';
-app.use('/api/knowledge-bases/:kbId/search', resolveKb, searchRouter);
+app.use('/api/knowledge-bases/:kbId/search', authMiddleware, resolveKb, requireVisibleKb, searchRouter);
 
 import { apiKeysRouter } from './routes/admin/api-keys.js';
 app.use('/api/admin/api-keys', apiKeysRouter);
@@ -53,17 +53,24 @@ import { ragRouter } from './routes/rag.js';
 app.use('/api/v1/rag', ragRouter);
 
 import { tagsRouter, articleTagsRouter } from './routes/tags.js';
-app.use('/api/knowledge-bases/:kbId/tags', resolveKb, tagsRouter);
-app.use('/api/knowledge-bases/:kbId/articles/:id/tags', resolveKb, articleTagsRouter);
+app.use('/api/knowledge-bases/:kbId/tags', authMiddleware, resolveKb, requireVisibleKb, tagsRouter);
+app.use('/api/knowledge-bases/:kbId/articles/:id/tags', authMiddleware, resolveKb, requireVisibleKb, articleTagsRouter);
+
+import { attachmentsRouter, articleAttachmentsRouter } from './routes/attachments.js';
+app.use('/api/knowledge-bases/:kbId/articles/:id/attachments', authMiddleware, resolveKb, requireVisibleKb, articleAttachmentsRouter);
+app.use('/api/attachments', authMiddleware, attachmentsRouter);
 
 import { importRouter } from './routes/admin/import.js';
-app.use('/api/knowledge-bases/:kbId/admin/import', resolveKb, importRouter);
+app.use('/api/knowledge-bases/:kbId/admin/import', authMiddleware, resolveKb, importRouter);
 
 import { bulkPublishRouter } from './routes/admin/bulk-publish.js';
-app.use('/api/knowledge-bases/:kbId/admin/articles/bulk-publish', resolveKb, bulkPublishRouter);
+app.use('/api/knowledge-bases/:kbId/admin/articles/bulk-publish', authMiddleware, resolveKb, bulkPublishRouter);
 
 import { kbOverviewRouter } from './routes/admin/kb-overview.js';
 app.use('/api/knowledge-bases/:kbId/admin/overview', authMiddleware, resolveKb, kbOverviewRouter);
+
+import { maintenanceRouter } from './routes/admin/maintenance.js';
+app.use('/api/knowledge-bases/:kbId/admin/maintenance', authMiddleware, resolveKb, requireVisibleKb, maintenanceRouter);
 
 import { workspaceRouter } from './routes/workspace.js';
 app.use('/api/workspace', workspaceRouter);

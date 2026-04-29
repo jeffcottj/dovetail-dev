@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
 import { adminActivityEvents, db, importJobs } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requireKbAdmin } from '../../middleware/resolveKb.js';
 import { buildAdminActivityInsert } from '../../services/admin-activity.js';
 import { validateBody } from '../../utils/validate.js';
 import { getUploadsDir, ensureDir, cleanupDir } from '../../utils/storage.js';
@@ -29,7 +29,7 @@ export const importRouter: Router = Router({ mergeParams: true });
 importRouter.post(
   '/preview',
   authMiddleware,
-  requireRole('admin'),
+  requireKbAdmin,
   upload.single('file'),
   async (req: AuthRequest, res) => {
     if (!req.file) {
@@ -128,7 +128,7 @@ const executeSchema = z.object({
 importRouter.post(
   '/execute',
   authMiddleware,
-  requireRole('admin'),
+  requireKbAdmin,
   validateBody(executeSchema),
   async (req: AuthRequest, res) => {
     const { tempId, options } = req.body;
@@ -213,7 +213,7 @@ importRouter.post(
 importRouter.get(
   '/:id/progress',
   authMiddleware,
-  requireRole('admin'),
+  requireKbAdmin,
   async (req, res) => {
     const jobId = req.params.id as string;
     const kbId = req.params.kbId as string;
@@ -291,7 +291,7 @@ importRouter.get(
 importRouter.get(
   '/:id',
   authMiddleware,
-  requireRole('admin'),
+  requireKbAdmin,
   async (req, res) => {
     const [job] = await db
       .select()
@@ -312,7 +312,7 @@ importRouter.get(
 importRouter.get(
   '/',
   authMiddleware,
-  requireRole('admin'),
+  requireKbAdmin,
   async (req, res) => {
     const jobs = await db
       .select()

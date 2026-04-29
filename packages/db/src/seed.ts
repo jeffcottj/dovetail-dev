@@ -148,6 +148,7 @@ async function runSeed() {
     await tx.insert(articles).values(
       allArticles.map((a) => ({
         ...a,
+        lastEditedById: a.authorId,
         createdAt: now,
         updatedAt: now,
         publishedAt: a.status === 'published' ? now : null,

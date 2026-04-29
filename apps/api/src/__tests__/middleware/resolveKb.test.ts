@@ -33,7 +33,14 @@ describe('resolveKb middleware', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('attaches KB to request when valid kbId', async () => {
-    const mockKb = { id: 'kb-1', name: 'Test KB', slug: 'test-kb', description: null, createdAt: new Date() };
+    const mockKb = {
+      id: 'kb-1',
+      name: 'Test KB',
+      slug: 'test-kb',
+      description: null,
+      defaultAccess: 'org_viewer' as const,
+      createdAt: new Date(),
+    };
     (db.select as Mock).mockReturnValue(createChain([mockKb]));
 
     const res = await supertest(buildApp()).get('/api/knowledge-bases/kb-1/test');

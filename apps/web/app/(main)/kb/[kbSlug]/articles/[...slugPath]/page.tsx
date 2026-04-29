@@ -18,6 +18,17 @@ interface PaginatedResponse<T> {
   limit: number;
 }
 
+function lastEditedLabel(article: Article) {
+  const date = new Date(article.updatedAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  return article.lastEditedByName
+    ? `Last edited by ${article.lastEditedByName} on ${date}`
+    : `Last edited ${date}`;
+}
+
 export default async function KbArticleCatchAllPage({
   params,
 }: {
@@ -101,12 +112,7 @@ async function renderViewPage(kb: KnowledgeBase, kbSlug: string, slugPath: strin
               </Badge>
               <span className="text-border">|</span>
               <time dateTime={new Date(article.updatedAt).toISOString()}>
-                Updated{' '}
-                {new Date(article.updatedAt).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
+                {lastEditedLabel(article)}
               </time>
               <span className="text-border">|</span>
               <Link

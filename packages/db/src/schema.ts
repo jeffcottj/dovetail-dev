@@ -18,6 +18,7 @@ import {
 export const roleEnum = pgEnum('role', ['viewer', 'editor', 'admin']);
 export const providerEnum = pgEnum('oauth_provider', ['google', 'entra']);
 export const statusEnum = pgEnum('article_status', ['draft', 'published', 'archived']);
+export const kbDefaultAccessEnum = pgEnum('kb_default_access', ['org_viewer', 'private']);
 
 // -- Knowledge Bases --
 
@@ -26,6 +27,7 @@ export const knowledgeBases = pgTable('knowledge_bases', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   description: text('description'),
+  defaultAccess: kbDefaultAccessEnum('default_access').notNull().default('org_viewer'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -94,6 +96,7 @@ export const articles = pgTable('articles', {
   slug: text('slug').notNull(),
   categoryId: uuid('category_id').notNull().references(() => categories.id),
   authorId: uuid('author_id').notNull().references(() => users.id),
+  lastEditedById: uuid('last_edited_by_id').notNull().references(() => users.id),
   content: jsonb('content').notNull().default({}),
   status: statusEnum('status').notNull().default('draft'),
   plainText: text('plain_text'),
@@ -228,6 +231,7 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 export const articlesRelations = relations(articles, ({ one, many }) => ({
   category: one(categories, { fields: [articles.categoryId], references: [categories.id] }),
   author: one(users, { fields: [articles.authorId], references: [users.id] }),
+  lastEditor: one(users, { fields: [articles.lastEditedById], references: [users.id] }),
   versions: many(articleVersions),
   articleTags: many(articleTags),
   embeddings: many(articleEmbeddings),

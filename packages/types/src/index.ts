@@ -1,11 +1,13 @@
 export type Role = 'viewer' | 'editor' | 'admin';
 export type OAuthProvider = 'google' | 'entra';
 export type ArticleStatus = 'draft' | 'published' | 'archived';
+export type KbDefaultAccess = 'org_viewer' | 'private';
 export type AdminActivityKind =
   | 'user.created'
   | 'user.deleted'
   | 'user.role_changed'
   | 'kb.created'
+  | 'kb.access_changed'
   | 'kb.deleted'
   | 'import.started'
   | 'api_key.created'
@@ -28,6 +30,7 @@ export interface KnowledgeBase {
   name: string;
   slug: string;
   description: string | null;
+  defaultAccess: KbDefaultAccess;
   createdAt: Date;
 }
 
@@ -64,6 +67,9 @@ export interface Article {
   categoryPath?: string[];  // e.g. ["housing", "rental"]
   knowledgeBaseSlug?: string;
   authorId: string;
+  lastEditedById: string;
+  lastEditedByName?: string | null;
+  lastEditedByEmail?: string | null;
   content: unknown; // rich text JSON (Tiptap format)
   status: ArticleStatus;
   createdAt: Date;
@@ -81,10 +87,50 @@ export interface WorkspaceSearchResult {
   knowledgeBaseName: string;
   knowledgeBaseSlug: string;
   authorId: string;
+  lastEditedById: string;
+  lastEditedByName?: string | null;
+  lastEditedByEmail?: string | null;
   status: ArticleStatus;
   createdAt: Date | string;
   updatedAt: Date | string;
   rank?: number;
+  similarity?: number;
+  chunkText?: string;
+  snippet?: string;
+}
+
+export type SearchMode = 'fulltext' | 'semantic' | 'hybrid';
+
+export interface SearchOptionCategory extends Category {
+  knowledgeBaseName: string;
+}
+
+export interface SearchOptionTag extends Tag {
+  knowledgeBaseName: string;
+}
+
+export interface SearchOptions {
+  categories: SearchOptionCategory[];
+  tags: SearchOptionTag[];
+}
+
+export interface StaleContentResult {
+  id: string;
+  title: string;
+  slug: string;
+  categoryId: string;
+  categoryPath?: string[];
+  knowledgeBaseId: string;
+  knowledgeBaseName: string;
+  knowledgeBaseSlug: string;
+  authorId: string;
+  lastEditedById: string;
+  lastEditedByName?: string | null;
+  lastEditedByEmail?: string | null;
+  status: ArticleStatus;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  staleSince: Date | string;
 }
 
 export interface ArticleVersion {

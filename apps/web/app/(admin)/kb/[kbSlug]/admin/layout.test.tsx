@@ -2,6 +2,7 @@ import React from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { KbProvider } from '../../../../../components/KbProvider';
 import { auth } from '../../../../../auth';
+import { apiFetch } from '../../../../../lib/api';
 import { getKbBySlug } from '../../../../../lib/kb';
 import KbAdminLayout from './layout';
 
@@ -27,6 +28,10 @@ vi.mock('../../../../../lib/kb', () => ({
   getKbBySlug: vi.fn(),
 }));
 
+vi.mock('../../../../../lib/api', () => ({
+  apiFetch: vi.fn(),
+}));
+
 vi.mock('next/navigation', () => ({
   redirect: mockRedirect,
   notFound: mockNotFound,
@@ -43,11 +48,13 @@ describe('KbAdminLayout', () => {
       name: 'Housing',
       slug: 'housing',
       description: null,
+      defaultAccess: 'org_viewer',
       createdAt: new Date('2026-03-28T12:00:00.000Z'),
     };
 
     vi.mocked(auth).mockResolvedValue({ user: { role: 'admin' } } as never);
     vi.mocked(getKbBySlug).mockResolvedValue(kb as never);
+    vi.mocked(apiFetch).mockResolvedValue({} as never);
 
     const element = await KbAdminLayout({
       children: <div data-testid="page-body" />,
@@ -61,8 +68,19 @@ describe('KbAdminLayout', () => {
     expect(mockNotFound).not.toHaveBeenCalled();
   });
 
-  test('redirects non-admin users away from the KB admin workspace', async () => {
+  test('redirects users without KB admin API access away from the KB admin workspace', async () => {
+    const kb = {
+      id: 'kb-1',
+      name: 'Housing',
+      slug: 'housing',
+      description: null,
+      defaultAccess: 'org_viewer',
+      createdAt: new Date('2026-03-28T12:00:00.000Z'),
+    };
+
     vi.mocked(auth).mockResolvedValue({ user: { role: 'viewer' } } as never);
+    vi.mocked(getKbBySlug).mockResolvedValue(kb as never);
+    vi.mocked(apiFetch).mockRejectedValue(new Error('API error: 403 Forbidden') as never);
 
     await expect(
       KbAdminLayout({

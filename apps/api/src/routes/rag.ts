@@ -41,9 +41,11 @@ ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req:
   const results = await db.execute(sql`
     SELECT ae.article_id, ae.chunk_text, ae.chunk_index,
            1 - (ae.embedding <=> ${vectorLiteral}::vector) AS similarity,
-           a.title, a.slug, a.category_id
+           a.title, a.slug, a.category_id, a.updated_at,
+           a.last_edited_by_id, u.name AS last_edited_by_name, u.email AS last_edited_by_email
     FROM article_embeddings ae
     JOIN articles a ON a.id = ae.article_id
+    LEFT JOIN users u ON u.id = a.last_edited_by_id
     WHERE a.status = 'published' ${kbFilter} ${categoryFilter}
     ORDER BY ae.embedding <=> ${vectorLiteral}::vector
     LIMIT ${limit}
@@ -63,6 +65,10 @@ ragRouter.post('/search', apiKeyAuth, validateBody(ragSearchSchema), async (req:
         articleTitle: r.title,
         articleUrl: `/kb/${kb?.slug ?? 'default'}/articles/${categoryPath.join('/')}/${r.slug}`,
         categoryPath,
+        lastEditedAt: r.updated_at,
+        lastEditedById: r.last_edited_by_id,
+        lastEditedByName: r.last_edited_by_name,
+        lastEditedByEmail: r.last_edited_by_email,
         chunkText: r.chunk_text,
         score: parseFloat(r.similarity),
       };

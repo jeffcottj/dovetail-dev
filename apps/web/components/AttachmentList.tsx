@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiClientFetch } from '../lib/api-client';
+import { useOptionalKb } from '../lib/hooks/useKb';
 
 interface Attachment {
   id: string;
@@ -34,15 +35,19 @@ function fileTypeLabel(mimeType: string): string {
 }
 
 export function AttachmentList({ articleId }: { articleId: string }) {
+  const kb = useOptionalKb();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClientFetch<Attachment[]>(`/api/articles/${articleId}/attachments`)
+    const attachmentPath = kb
+      ? `/api/knowledge-bases/${kb.id}/articles/${articleId}/attachments`
+      : `/api/articles/${articleId}/attachments`;
+    apiClientFetch<Attachment[]>(attachmentPath)
       .then(setAttachments)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [articleId]);
+  }, [articleId, kb]);
 
   if (loading || attachments.length === 0) return null;
 

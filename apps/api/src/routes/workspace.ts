@@ -3,19 +3,79 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { db } from '@dovetail/db';
 import { authMiddleware } from '../middleware/auth.js';
+import type { AuthRequest } from '../middleware/auth.js';
+import { listVisibleKnowledgeBaseIds } from '../services/permissions.js';
 import { validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
 import { normalizeAdminActivityRow, type AdminActivityRow } from '../services/admin-activity.js';
-import { buildCategoryPath } from '../utils/category-path.js';
-import type { WorkspaceSearchResult } from '@dovetail/types';
+import { listSearchOptions, listStaleContent, searchArticles } from '../services/search.js';
+import type { Role } from '@dovetail/types';
 
 export const workspaceRouter: Router = Router();
 
 const workspaceSearchSchema = paginationSchema.extend({
   q: z.string().min(1),
+  mode: z.enum(['fulltext', 'semantic', 'hybrid']).default('fulltext'),
+  knowledgeBaseIds: z.string().optional(),
+  categoryId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  tags: z.string().optional(),
+  onlyEditable: z.enum(['true', 'false']).optional().transform((value) => value === 'true').default(false),
 });
 
-workspaceRouter.get('/activity', authMiddleware, async (_req, res) => {
+const workspaceSearchOptionsSchema = z.object({
+  knowledgeBaseIds: z.string().optional(),
+});
+
+const staleContentSchema = paginationSchema.extend({
+  knowledgeBaseIds: z.string().optional(),
+  categoryId: z.string().uuid().optional(),
+  updatedBefore: z.string().datetime().optional(),
+  createdBefore: z.string().datetime().optional(),
+  status: z.enum(['draft', 'published', 'archived']).optional(),
+});
+
+function visibleKbSql(ids: string[]) {
+  return sql.join(ids.map((id) => sql`${id}`), sql`,`);
+}
+
+function idsFromQuery(value?: string) {
+  return value?.split(',').map((id) => id.trim()).filter(Boolean) ?? [];
+}
+
+function tagIdsFromQuery(value?: string) {
+  return idsFromQuery(value);
+}
+
+async function resolveWorkspaceKbScope(args: {
+  userId: string;
+  globalRole: Role;
+  requestedIds?: string;
+}) {
+  const visibleKbIds = await listVisibleKnowledgeBaseIds({
+    userId: args.userId,
+    globalRole: args.globalRole,
+  });
+  const requested = idsFromQuery(args.requestedIds);
+  if (requested.length === 0) {
+    return visibleKbIds;
+  }
+
+  const visible = new Set(visibleKbIds);
+  return requested.filter((id) => visible.has(id));
+}
+
+workspaceRouter.get('/activity', authMiddleware, async (req: AuthRequest, res) => {
+  const visibleKbIds = await listVisibleKnowledgeBaseIds({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+  });
+  if (visibleKbIds.length === 0) {
+    res.json([]);
+    return;
+  }
+
   const activityRows = await db.execute(sql`
     SELECT
       e.id,
@@ -33,6 +93,7 @@ workspaceRouter.get('/activity', authMiddleware, async (_req, res) => {
     INNER JOIN users u ON u.id = e.actor_id
     LEFT JOIN knowledge_bases kb ON kb.id = e.knowledge_base_id
     WHERE e.kind IN ('article.created', 'article.edited')
+      AND e.knowledge_base_id IN (${visibleKbSql(visibleKbIds)})
     ORDER BY e.created_at DESC
     LIMIT 20
   `);
@@ -44,56 +105,66 @@ workspaceRouter.get('/activity', authMiddleware, async (_req, res) => {
   res.json(articleActivityRows.map(normalizeAdminActivityRow));
 });
 
-workspaceRouter.get('/search', authMiddleware, validateQuery(workspaceSearchSchema), async (_req, res) => {
-  const { q, page, limit } = res.locals.query as z.infer<typeof workspaceSearchSchema>;
-  const offset = (page - 1) * limit;
+workspaceRouter.get('/search', authMiddleware, validateQuery(workspaceSearchSchema), async (req: AuthRequest, res) => {
+  const query = res.locals.query as z.infer<typeof workspaceSearchSchema>;
+  const knowledgeBaseIds = await resolveWorkspaceKbScope({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    requestedIds: query.knowledgeBaseIds,
+  });
 
-  const [{ count: total }] = (await db.execute(sql`
-    SELECT count(*) AS count
-    FROM articles a
-    INNER JOIN categories c ON c.id = a.category_id
-    INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
-    WHERE a.status = 'published'
-      AND a.search_vector @@ websearch_to_tsquery('english', ${q})
-  `)) as unknown as Array<{ count: string | number }>;
+  const result = await searchArticles({
+    q: query.q,
+    mode: query.mode,
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    knowledgeBaseIds,
+    categoryId: query.categoryId,
+    tagIds: tagIdsFromQuery(query.tags),
+    updatedFrom: query.from,
+    updatedTo: query.to,
+    onlyEditable: query.onlyEditable,
+    page: query.page,
+    limit: query.limit,
+  });
 
-  const rows = (await db.execute(sql`
-    SELECT
-      a.id,
-      a.title,
-      a.slug,
-      a.category_id AS "categoryId",
-      c.knowledge_base_id AS "knowledgeBaseId",
-      kb.name AS "knowledgeBaseName",
-      kb.slug AS "knowledgeBaseSlug",
-      a.author_id AS "authorId",
-      a.status,
-      a.created_at AS "createdAt",
-      a.updated_at AS "updatedAt",
-      ts_rank(a.search_vector, websearch_to_tsquery('english', ${q})) AS rank,
-      count(*) OVER() AS total
-    FROM articles a
-    INNER JOIN categories c ON c.id = a.category_id
-    INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
-    WHERE a.status = 'published'
-      AND a.search_vector @@ websearch_to_tsquery('english', ${q})
-    ORDER BY ts_rank(a.search_vector, websearch_to_tsquery('english', ${q})) DESC
-    LIMIT ${limit}
-    OFFSET ${offset}
-  `)) as unknown as WorkspaceSearchResult[];
+  res.json(paginate(result.data, result.total, { page: query.page, limit: query.limit }));
+});
 
-  const data = await Promise.all(
-    rows.map(async (row) => ({
-      ...row,
-      categoryPath: await buildCategoryPath(row.categoryId),
-    })),
-  );
+workspaceRouter.get('/search/options', authMiddleware, validateQuery(workspaceSearchOptionsSchema), async (req: AuthRequest, res) => {
+  const query = res.locals.query as z.infer<typeof workspaceSearchOptionsSchema>;
+  const knowledgeBaseIds = await resolveWorkspaceKbScope({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    requestedIds: query.knowledgeBaseIds,
+  });
 
-  res.json(
-    paginate(
-      data,
-      Number(total),
-      { page, limit },
-    ),
-  );
+  res.json(await listSearchOptions({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    knowledgeBaseIds,
+  }));
+});
+
+workspaceRouter.get('/maintenance/stale', authMiddleware, validateQuery(staleContentSchema), async (req: AuthRequest, res) => {
+  const query = res.locals.query as z.infer<typeof staleContentSchema>;
+  const knowledgeBaseIds = await resolveWorkspaceKbScope({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    requestedIds: query.knowledgeBaseIds,
+  });
+
+  const result = await listStaleContent({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    knowledgeBaseIds,
+    categoryId: query.categoryId,
+    updatedBefore: query.updatedBefore,
+    createdBefore: query.createdBefore,
+    status: query.status,
+    page: query.page,
+    limit: query.limit,
+  });
+
+  res.json(paginate(result.data, result.total, { page: query.page, limit: query.limit }));
 });

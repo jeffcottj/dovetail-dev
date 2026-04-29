@@ -13,6 +13,7 @@ test-export.zip
 .codex/
 .pnpm-store/
 
+
 # Azure deployment secrets (local parameter overrides — contain passwords/keys)
 infra/*.local.bicepparam
 
