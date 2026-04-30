@@ -28,8 +28,11 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      UPLOADS_DIR: /data/uploads
     ports:
       - "3001:3001"
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,3 +61,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

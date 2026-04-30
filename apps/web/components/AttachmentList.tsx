@@ -2,18 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { apiClientFetch } from '../lib/api-client';
-import { useOptionalKb } from '../lib/hooks/useKb';
+import { useKb } from '../lib/hooks/useKb';
+import type { Attachment } from '@dovetail/types';
 
-interface Attachment {
-  id: string;
-  articleId: string | null;
-  filename: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: string;
-}
-
-function formatFileSize(bytes: number): string {
+export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -30,19 +22,17 @@ const FILE_ICONS: Record<string, string> = {
   'image/gif': 'GIF',
 };
 
-function fileTypeLabel(mimeType: string): string {
+export function fileTypeLabel(mimeType: string): string {
   return FILE_ICONS[mimeType] ?? mimeType.split('/')[1]?.toUpperCase() ?? 'FILE';
 }
 
 export function AttachmentList({ articleId }: { articleId: string }) {
-  const kb = useOptionalKb();
+  const kb = useKb();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const attachmentPath = kb
-      ? `/api/knowledge-bases/${kb.id}/articles/${articleId}/attachments`
-      : `/api/articles/${articleId}/attachments`;
+    const attachmentPath = `/api/knowledge-bases/${kb.id}/articles/${articleId}/attachments`;
     apiClientFetch<Attachment[]>(attachmentPath)
       .then(setAttachments)
       .catch(() => {})
@@ -60,7 +50,7 @@ export function AttachmentList({ articleId }: { articleId: string }) {
         {attachments.map((att) => (
           <li key={att.id}>
             <a
-              href={`/api/attachments/${att.id}/download`}
+              href={`/api/knowledge-bases/${kb.id}/articles/${articleId}/attachments/${att.id}/download`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 px-3 py-2 -mx-3 rounded-lg hover:bg-parchment-warm transition-colors duration-150 group"

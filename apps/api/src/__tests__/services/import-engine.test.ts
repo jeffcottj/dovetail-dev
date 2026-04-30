@@ -24,13 +24,23 @@ vi.mock('../../utils/storage.js', () => ({
   copyFile: vi.fn(),
 }));
 
+vi.mock('../../services/attachment-indexing.js', () => ({
+  enqueueAttachmentIndexing: vi.fn(),
+}));
+
+vi.mock('../../services/embedding-pipeline.js', () => ({
+  generateEmbeddings: vi.fn(),
+}));
+
 import { db } from '@dovetail/db';
 import { ImportEngine } from '../../services/import/import-engine.js';
+import { enqueueAttachmentIndexing } from '../../services/attachment-indexing.js';
+import { generateEmbeddings } from '../../services/embedding-pipeline.js';
 
 /** Helper: build a chainable mock that records method calls and resolves with `finalValue` */
 function chainMock(finalValue: any = []) {
   const chain: any = {};
-  for (const method of ['from', 'where', 'set', 'values', 'returning', 'on', 'onConflictDoNothing']) {
+  for (const method of ['from', 'where', 'set', 'values', 'returning', 'on', 'onConflictDoNothing', 'limit']) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
   // The terminal call (returning / where at the end of a select) resolves to the value
@@ -56,74 +66,60 @@ describe('ImportEngine', () => {
     expect(engine).toBeDefined();
   });
 
-  it('skips duplicate articles with same slug and category instead of inserting', async () => {
-    // --- Arrange ---
-    // data.json format: { articles: { "<id>": { title, code, index, tags } } }
-    // code format: "parentId-childId--slug"  (parentChain derived from prefix)
-    // We need a parent article (top-level category) and a child article under it.
+  it('imports Flowlu tags, generates article embeddings, and queues attachment indexing', async () => {
     const fakeDataJson = JSON.stringify({
       articles: {
         '100': { title: 'Test Category', code: '100--test-category', index: '0', tags: [] },
-        '101': { title: 'Test Article', code: '100-101--test-article', index: '1', tags: [] },
+        '101': {
+          title: 'Test Article',
+          code: '100-101--test-article',
+          index: '1',
+          tags: ['Flowlu Test Tag', 'flowlu test tag', 'Other Tag'],
+        },
       },
     });
 
-    // Mock fs.readFile: return fake data.json, throw for everything else (HTML files)
     const mockedReadFile = vi.mocked(fs.readFile);
     mockedReadFile.mockImplementation(async (filePath: any) => {
       if (String(filePath).endsWith('data.json')) return fakeDataJson;
+      if (String(filePath).endsWith('index.html')) {
+        return '<html><body><main><p>marigold import remedy</p></main></body></html>';
+      }
+      return 'attachment text';
+    });
+
+    const mockedReaddir = vi.mocked(fs.readdir);
+    mockedReaddir.mockImplementation(async (dirPath: any) => {
+      if (String(dirPath).endsWith('/assets/images/101')) return ['notice.txt'] as any;
       throw new Error('ENOENT');
     });
 
-    // Mock fs.readdir to throw (no attachments directory)
-    const mockedReaddir = vi.mocked(fs.readdir);
-    mockedReaddir.mockRejectedValue(new Error('ENOENT'));
+    vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true, size: 42 } as any);
 
-    // --- Set up db mock chains ---
     const mockedDb = vi.mocked(db);
+    (mockedDb.update as any).mockReturnValue(chainMock());
 
-    // Track call order to return different values for different operations:
-    //
-    // createCategories for '100' (top-level):
-    //   1. db.select() -> categories dedup check -> [] (not found)
-    //   2. db.insert() -> create category -> [{ id: 'cat-100' }]
-    //
-    // createCategories for '101' (child of '100'):
-    //   3. db.select() -> categories dedup check -> [] (not found)
-    //   4. db.insert() -> create category -> [{ id: 'cat-101' }]
-    //
-    // importArticle for '100' (top-level article placed in its own category):
-    //   5. db.select() -> article dedup check -> [{ id: 'existing-1' }] (DUPLICATE!)
-    //   — error thrown, article skipped
-    //
-    // importArticle for '101':
-    //   6. db.select() -> article dedup check -> [{ id: 'existing-2' }] (DUPLICATE!)
-    //   — error thrown, article skipped
-
-    // update always returns a simple chain (for importJobs progress updates)
-    const updateChain = chainMock();
-    (mockedDb.update as any).mockReturnValue(updateChain);
-
-    // select: category dedup checks return empty, article dedup checks return existing
     let selectCallCount = 0;
     (mockedDb.select as any).mockImplementation(() => {
       selectCallCount++;
-      if (selectCallCount <= 2) {
-        // Category dedup checks (calls 1-2) — no existing categories
-        return chainMock([]);
-      }
-      // Article dedup checks (calls 3+) — articles already exist!
-      return chainMock([{ id: 'existing-article' }]);
+      if (selectCallCount === 1) return chainMock([]); // category dedupe
+      if (selectCallCount === 2) return chainMock([]); // root article dedupe
+      if (selectCallCount === 3) return chainMock([]); // child article dedupe
+      if (selectCallCount === 4) return chainMock([{ id: 'tag-existing' }]); // first tag exists
+      if (selectCallCount === 5) return chainMock([]); // second normalized tag missing
+      return chainMock([]);
     });
 
-    // insert: category inserts succeed
     let insertCallCount = 0;
     (mockedDb.insert as any).mockImplementation(() => {
       insertCallCount++;
-      return chainMock([{ id: `cat-${insertCallCount}` }]);
+      if (insertCallCount === 1) return chainMock([{ id: 'cat-100' }]);
+      if (insertCallCount === 2) return chainMock([{ id: 'article-100' }]);
+      if (insertCallCount === 3) return chainMock([{ id: 'article-101' }]);
+      if (insertCallCount === 4) return chainMock([{ id: 'tag-created' }]);
+      return chainMock([{ id: `insert-${insertCallCount}` }]);
     });
 
-    // --- Act ---
     const engine = new ImportEngine({
       extractDir: '/tmp/test-import',
       userId: 'user-1',
@@ -137,16 +133,70 @@ describe('ImportEngine', () => {
 
     await engine.run();
 
-    // --- Assert ---
-    // The engine should have emitted error events for duplicate articles
-    const errorEvents = events.filter((e) => e.type === 'error');
-    expect(errorEvents.length).toBeGreaterThanOrEqual(1);
-    expect(errorEvents.some((e) => e.message.includes('Duplicate article skipped'))).toBe(true);
+    expect(events.find((e) => e.type === 'complete')).toMatchObject({ imported: 2, errors: 0 });
+    expect(generateEmbeddings).toHaveBeenCalledWith('article-100');
+    expect(generateEmbeddings).toHaveBeenCalledWith('article-101');
+    expect(enqueueAttachmentIndexing).toHaveBeenCalledTimes(1);
 
-    // The complete event should show 0 imported, errors > 0
+    const valuesCalls = (mockedDb.insert as any).mock.results
+      .map((result: any) => result.value?.values?.mock?.calls ?? [])
+      .flat(2);
+    expect(valuesCalls).toContainEqual({ articleId: 'article-101', tagId: 'tag-existing' });
+    expect(valuesCalls).toContainEqual({ name: 'Other Tag', slug: 'other-tag', knowledgeBaseId: 'kb-1' });
+    expect(valuesCalls).toContainEqual({ articleId: 'article-101', tagId: 'insert-5' });
+  });
+
+  it('skips duplicate articles without creating tags or indexing work for skipped articles', async () => {
+    const fakeDataJson = JSON.stringify({
+      articles: {
+        '100': { title: 'Test Category', code: '100--test-category', index: '0', tags: ['Skipped Tag'] },
+      },
+    });
+
+    vi.mocked(fs.readFile).mockImplementation(async (filePath: any) => {
+      if (String(filePath).endsWith('data.json')) return fakeDataJson;
+      throw new Error('ENOENT');
+    });
+    vi.mocked(fs.readdir).mockRejectedValue(new Error('ENOENT'));
+
+    const mockedDb = vi.mocked(db);
+    (mockedDb.update as any).mockReturnValue(chainMock());
+
+    let selectCallCount = 0;
+    (mockedDb.select as any).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) return chainMock([]); // category dedupe
+      return chainMock([{ id: 'existing-article' }]); // article dedupe
+    });
+
+    let insertCallCount = 0;
+    (mockedDb.insert as any).mockImplementation(() => {
+      insertCallCount++;
+      if (insertCallCount === 1) return chainMock([{ id: 'cat-100' }]);
+      return chainMock([{ id: `unexpected-${insertCallCount}` }]);
+    });
+
+    const engine = new ImportEngine({
+      extractDir: '/tmp/test-import',
+      userId: 'user-1',
+      defaultStatus: 'draft',
+      jobId: 'job-1',
+      knowledgeBaseId: 'kb-1',
+    });
+
+    const events: any[] = [];
+    engine.onProgress((e) => events.push(e));
+
+    await engine.run();
+
+    const errorEvents = events.filter((e) => e.type === 'error');
+    expect(errorEvents).toHaveLength(1);
+    expect(errorEvents[0].message).toContain('Duplicate article skipped');
+
     const completeEvent = events.find((e) => e.type === 'complete');
-    expect(completeEvent).toBeDefined();
-    expect(completeEvent.imported).toBe(0);
-    expect(completeEvent.errors).toBe(errorEvents.length);
+    expect(completeEvent).toMatchObject({ imported: 0, errors: 1 });
+    expect(generateEmbeddings).not.toHaveBeenCalled();
+    expect(enqueueAttachmentIndexing).not.toHaveBeenCalled();
+    expect(insertCallCount).toBe(1);
   });
 });

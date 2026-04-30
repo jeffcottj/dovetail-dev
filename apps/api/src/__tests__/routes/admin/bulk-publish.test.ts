@@ -25,11 +25,13 @@ const mockKb = { id: 'kb-1', name: 'Default', slug: 'default', description: null
 
 describe('POST /api/knowledge-bases/:kbId/admin/articles/bulk-publish', () => {
   let adminToken: string;
+  let kbAdminToken: string;
   let editorToken: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     adminToken = await makeToken({ sub: 'admin-1', role: 'admin' });
+    kbAdminToken = await makeToken({ sub: 'kb-admin-1', role: 'viewer' });
     editorToken = await makeToken({ sub: 'editor-1', role: 'editor' });
   });
 
@@ -54,6 +56,22 @@ describe('POST /api/knowledge-bases/:kbId/admin/articles/bulk-publish', () => {
       .send({});
 
     expect(res.status).toBe(200);
+    expect(db.update).toHaveBeenCalled();
+  });
+
+  it('allows KB admins to bulk publish within their KB', async () => {
+    (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+    (db.execute as Mock).mockResolvedValueOnce([{ defaultAccess: 'private', kbRole: 'admin' }]);
+    const updateChain = createChain([{ id: '1' }]);
+    (db.update as Mock).mockReturnValue(updateChain);
+
+    const res = await supertest(app)
+      .post('/api/knowledge-bases/kb-1/admin/articles/bulk-publish')
+      .set('Cookie', `${COOKIE_NAME}=${kbAdminToken}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.published).toBe(1);
     expect(db.update).toHaveBeenCalled();
   });
 });

@@ -96,6 +96,31 @@ describe('Search routes', () => {
       expect(res.body.page).toBe(1);
     });
 
+    it('returns attachment source metadata for attachment matches', async () => {
+      (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
+      (db.execute as Mock)
+        .mockResolvedValueOnce([{ count: 1 }])
+        .mockResolvedValueOnce([{
+          ...mockSearchResult,
+          sourceType: 'attachment',
+          attachmentId: '00000000-0000-4000-8000-000000000050',
+          attachmentFilename: 'escrow.pdf',
+          attachmentMimeType: 'application/pdf',
+          snippet: 'marigold escrow remedy',
+        }]);
+
+      const res = await supertest(app)
+        .get('/api/knowledge-bases/kb-1/search?q=marigold')
+        .set('Cookie', `${COOKIE_NAME}=${viewerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0]).toEqual(expect.objectContaining({
+        sourceType: 'attachment',
+        attachmentId: '00000000-0000-4000-8000-000000000050',
+        attachmentFilename: 'escrow.pdf',
+      }));
+    });
+
     it('supports pagination', async () => {
       (db.select as Mock).mockReturnValueOnce(createChain([mockKb]));
       (db.execute as Mock)

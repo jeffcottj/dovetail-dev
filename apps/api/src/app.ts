@@ -31,11 +31,21 @@ import { categoriesRouter } from './routes/categories.js';
 import { resolveKb, requireVisibleKb } from './middleware/resolveKb.js';
 app.use('/api/knowledge-bases/:kbId/categories', authMiddleware, resolveKb, requireVisibleKb, categoriesRouter);
 
-import { articlesRouter } from './routes/articles.js';
-app.use('/api/knowledge-bases/:kbId/articles', authMiddleware, resolveKb, requireVisibleKb, articlesRouter);
-
 import { versionsRouter } from './routes/versions.js';
 app.use('/api/knowledge-bases/:kbId/articles/:id/versions', authMiddleware, resolveKb, requireVisibleKb, versionsRouter);
+
+import { attachmentsRouter, articleAttachmentsRouter } from './routes/attachments.js';
+app.use('/api/knowledge-bases/:kbId/articles/:id/attachments', authMiddleware, resolveKb, requireVisibleKb, articleAttachmentsRouter);
+app.use('/api/attachments', authMiddleware, attachmentsRouter);
+
+import { docxConversionsRouter } from './routes/docx-conversions.js';
+app.use('/api/knowledge-bases/:kbId/document-conversions', authMiddleware, resolveKb, requireVisibleKb, docxConversionsRouter);
+
+import { tagsRouter, articleTagsRouter } from './routes/tags.js';
+app.use('/api/knowledge-bases/:kbId/articles/:id/tags', authMiddleware, resolveKb, requireVisibleKb, articleTagsRouter);
+
+import { articlesRouter } from './routes/articles.js';
+app.use('/api/knowledge-bases/:kbId/articles', authMiddleware, resolveKb, requireVisibleKb, articlesRouter);
 
 import { searchRouter } from './routes/search.js';
 app.use('/api/knowledge-bases/:kbId/search', authMiddleware, resolveKb, requireVisibleKb, searchRouter);
@@ -52,13 +62,7 @@ app.use('/api/admin/overview', overviewRouter);
 import { ragRouter } from './routes/rag.js';
 app.use('/api/v1/rag', ragRouter);
 
-import { tagsRouter, articleTagsRouter } from './routes/tags.js';
 app.use('/api/knowledge-bases/:kbId/tags', authMiddleware, resolveKb, requireVisibleKb, tagsRouter);
-app.use('/api/knowledge-bases/:kbId/articles/:id/tags', authMiddleware, resolveKb, requireVisibleKb, articleTagsRouter);
-
-import { attachmentsRouter, articleAttachmentsRouter } from './routes/attachments.js';
-app.use('/api/knowledge-bases/:kbId/articles/:id/attachments', authMiddleware, resolveKb, requireVisibleKb, articleAttachmentsRouter);
-app.use('/api/attachments', authMiddleware, attachmentsRouter);
 
 import { importRouter } from './routes/admin/import.js';
 app.use('/api/knowledge-bases/:kbId/admin/import', authMiddleware, resolveKb, importRouter);

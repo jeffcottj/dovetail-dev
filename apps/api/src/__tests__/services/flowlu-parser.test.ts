@@ -29,6 +29,12 @@ describe('parseDataJson', () => {
     expect(art12!.slug).toBe('defending-claims');
   });
 
+  it('preserves Flowlu tag names from data.json', () => {
+    const articles = parseDataJson(JSON.stringify(sampleData));
+    const art12 = articles.find(a => a.id === '12');
+    expect(art12!.tags).toEqual(['Tag A']);
+  });
+
   it('derives parentChain from the numeric prefix', () => {
     const articles = parseDataJson(JSON.stringify(sampleData));
     const art15 = articles.find(a => a.id === '15');

@@ -3,18 +3,17 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
 import { EditorToolbar } from './EditorToolbar';
 import { apiClientFetch } from '../lib/api-client';
 import { buildTree, flattenTree } from '../lib/categories';
 import { useToast } from '../lib/hooks/useToast';
 import { useOptionalKb } from '../lib/hooks/useKb';
+import { articleEditorExtensions } from '../lib/editor/extensions';
 import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
+import { DocxImportControl } from './DocxImportControl';
 import { articleUrl } from '../lib/article-url';
-import type { Article, Category, Tag } from '@dovetail/types';
+import type { Article, Category, DocxConversionResult, Tag } from '@dovetail/types';
 
 interface ArticleCreateFormProps {
   categories: Category[];
@@ -29,6 +28,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState(defaultCategoryId ?? '');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+  const [retainedDocx, setRetainedDocx] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
@@ -38,7 +38,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
   }, [categories]);
 
   const editor = useEditor({
-    extensions: [StarterKit, Image, Link.configure({ openOnClick: false })],
+    extensions: articleEditorExtensions(),
     content: '',
     immediatelyRender: false,
     editorProps: {
@@ -60,6 +60,31 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     }
   }, [selectedTags, apiBase]);
 
+  const uploadRetainedDocx = useCallback(async (articleId: string) => {
+    if (!retainedDocx) return;
+    const body = new FormData();
+    body.append('file', retainedDocx);
+
+    const res = await fetch(`${apiBase}/articles/${articleId}/attachments`, {
+      method: 'POST',
+      credentials: 'include',
+      body,
+    });
+
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status}`);
+    }
+  }, [apiBase, retainedDocx]);
+
+  const handleDocxConverted = useCallback((result: DocxConversionResult, file: File, retainOriginal: boolean) => {
+    if (!editor) return;
+    editor.commands.setContent(result.content);
+    if (!title.trim() && result.suggestedTitle) {
+      setTitle(result.suggestedTitle);
+    }
+    setRetainedDocx(retainOriginal ? file : null);
+  }, [editor, title]);
+
   const handleSave = useCallback(async () => {
     if (!editor || !title.trim()) return;
     if (!categoryId) {
@@ -77,6 +102,11 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
         }),
       });
       await assignTags(created.id);
+      try {
+        await uploadRetainedDocx(created.id);
+      } catch {
+        toast.error('Draft saved, but the original Word document was not attached');
+      }
       toast.success('Draft saved');
       setTimeout(() => {
         router.push(articleUrl(created));
@@ -86,7 +116,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     } finally {
       setSaving(false);
     }
-  }, [editor, title, categoryId, router, assignTags, toast, apiBase]);
+  }, [editor, title, categoryId, router, assignTags, uploadRetainedDocx, toast, apiBase]);
 
   const handlePublish = useCallback(async () => {
     if (!editor || !title.trim()) return;
@@ -106,6 +136,11 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
         }),
       });
       await assignTags(created.id);
+      try {
+        await uploadRetainedDocx(created.id);
+      } catch {
+        toast.error('Article created, but the original Word document was not attached');
+      }
       // Then publish it
       await apiClientFetch(`${apiBase}/articles/${created.id}/publish`, {
         method: 'POST',
@@ -119,7 +154,7 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
     } finally {
       setPublishing(false);
     }
-  }, [editor, title, categoryId, router, assignTags, toast, apiBase]);
+  }, [editor, title, categoryId, router, assignTags, uploadRetainedDocx, toast, apiBase]);
 
   const busy = saving || publishing;
   const canSubmit = title.trim().length > 0 && !busy;
@@ -188,6 +223,13 @@ export function ArticleCreateForm({ categories, defaultCategoryId }: ArticleCrea
 
       {/* Tags */}
       <TagPicker onTagsChange={setSelectedTags} />
+
+      <DocxImportControl
+        apiBase={apiBase}
+        categoryId={categoryId || undefined}
+        disabled={!categoryId || busy}
+        onConverted={handleDocxConverted}
+      />
 
       {/* Editor */}
       {editor && <EditorToolbar editor={editor} />}

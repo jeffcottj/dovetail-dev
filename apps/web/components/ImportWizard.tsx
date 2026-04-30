@@ -31,7 +31,7 @@ interface ProgressEvent {
   errors?: number;
 }
 
-export default function ImportWizard({ kbId }: { kbId?: string }) {
+export default function ImportWizard({ kbId, onImportComplete }: { kbId?: string; onImportComplete?: () => void }) {
   const apiPrefix = kbId ? `/api/knowledge-bases/${kbId}` : '/api';
   const [step, setStep] = useState<Step>('upload');
   const [loading, setLoading] = useState(false);
@@ -99,6 +99,7 @@ export default function ImportWizard({ kbId }: { kbId?: string }) {
         } else if (data.type === 'complete') {
           setProgress((prev) => ({ ...prev, imported: data.imported! }));
           setStep('complete');
+          onImportComplete?.();
           es.close();
         }
       };

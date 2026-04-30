@@ -6,6 +6,7 @@ import { auth } from '../../../../../../auth';
 import { ArticleContent } from '../../../../../../components/ArticleContent';
 import { ArticleActions } from '../../../../../../components/ArticleActions';
 import { ArticleEditor } from '../../../../../../components/ArticleEditor';
+import { AttachmentList } from '../../../../../../components/AttachmentList';
 import { RestoreButton } from '../../../../../../components/RestoreButton';
 import { Breadcrumbs } from '../../../../../../components/Breadcrumbs';
 import { Badge } from '../../../../../../components/ui/Badge';
@@ -144,6 +145,7 @@ async function renderViewPage(kb: KnowledgeBase, kbSlug: string, slugPath: strin
 
       <div>
         <ArticleContent content={article.content} />
+        <AttachmentList articleId={article.id} />
       </div>
     </article>
   );

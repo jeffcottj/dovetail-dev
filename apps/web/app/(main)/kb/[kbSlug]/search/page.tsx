@@ -6,26 +6,9 @@ import { getKbBySlug } from '../../../../../lib/kb';
 import { SearchFilters } from '../../../../../components/SearchFilters';
 import { Badge } from '../../../../../components/ui/Badge';
 import { articleUrl } from '../../../../../lib/article-url';
-import type { Category } from '@dovetail/types';
+import type { Category, WorkspaceSearchResult } from '@dovetail/types';
 
-interface SearchResult {
-  id: string;
-  title: string;
-  slug: string;
-  categoryId: string;
-  categoryPath?: string[];
-  authorId: string;
-  lastEditedById: string;
-  lastEditedByName?: string | null;
-  lastEditedByEmail?: string | null;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  rank?: number;
-  similarity?: number;
-  chunkText?: string;
-  snippet?: string;
-}
+type SearchResult = WorkspaceSearchResult;
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -49,6 +32,12 @@ function lastEditedLabel(result: SearchResult) {
   return result.lastEditedByName
     ? `Last edited by ${result.lastEditedByName} on ${date}`
     : `Last edited ${date}`;
+}
+
+function sourceLabel(result: SearchResult) {
+  return result.sourceType === 'attachment' && result.attachmentFilename
+    ? `Attachment: ${result.attachmentFilename}`
+    : 'Article body';
 }
 
 export default async function KbSearchPage({
@@ -216,6 +205,9 @@ export default async function KbSearchPage({
                         ) : null}
                         <span className="text-xs text-ink-muted font-[family-name:var(--font-ui)]">
                           {lastEditedLabel(result)}
+                        </span>
+                        <span className="text-xs text-ink-muted font-[family-name:var(--font-ui)]">
+                          {sourceLabel(result)}
                         </span>
                       </div>
                       {result.snippet ? (

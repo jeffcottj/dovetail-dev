@@ -1,14 +1,11 @@
 'use client';
 
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import Link from '@tiptap/extension-link';
-import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
+import { articleEditorExtensions } from '../lib/editor/extensions';
 
 export function ArticleContent({ content }: { content: unknown }) {
   const editor = useEditor({
-    extensions: [StarterKit, Image, Link.configure({ openOnClick: true }), Table.configure({ resizable: false }), TableRow, TableCell, TableHeader],
+    extensions: articleEditorExtensions({ openLinksOnClick: true }),
     content: content as Parameters<typeof useEditor>[0] extends { content?: infer C } ? C : never,
     editable: false,
     immediatelyRender: false,

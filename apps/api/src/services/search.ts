@@ -70,6 +70,10 @@ function normalizeSearchRow(row: any) {
     updatedAt: row.updatedAt ?? row.updated_at,
     chunkText: row.chunkText ?? row.chunk_text,
     staleSince: row.staleSince ?? row.stale_since,
+    sourceType: row.sourceType ?? row.source_type ?? 'article',
+    attachmentId: row.attachmentId ?? row.attachment_id ?? null,
+    attachmentFilename: row.attachmentFilename ?? row.attachment_filename ?? null,
+    attachmentMimeType: row.attachmentMimeType ?? row.attachment_mime_type ?? null,
   };
 }
 
@@ -184,17 +188,30 @@ async function fulltextSearch(params: ArticleSearchParams): Promise<{ data: Work
   if (!filters) return { data: [], total: 0 };
 
   const whereClause = sql`${filters} AND a.search_vector @@ websearch_to_tsquery('english', ${params.q})`;
+  const attachmentWhereClause = sql`${filters} AND att.search_vector @@ websearch_to_tsquery('english', ${params.q})`;
 
   const [{ count = 0 } = { count: 0 }] = (await db.execute(sql`
-    SELECT count(DISTINCT a.id) AS count
-    FROM articles a
-    INNER JOIN categories c ON c.id = a.category_id
-    INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
-    WHERE ${whereClause}
+    SELECT count(*) AS count
+    FROM (
+      SELECT a.id AS source_id
+      FROM articles a
+      INNER JOIN categories c ON c.id = a.category_id
+      INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
+      WHERE ${whereClause}
+      UNION ALL
+      SELECT att.id AS source_id
+      FROM attachments att
+      INNER JOIN articles a ON a.id = att.article_id
+      INNER JOIN categories c ON c.id = a.category_id
+      INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
+      WHERE ${attachmentWhereClause}
+    ) source_rows
   `)) as unknown as Array<{ count: string | number }>;
 
   const rows = (await db.execute(sql`
-    SELECT
+    SELECT *
+    FROM (
+      SELECT
       a.id,
       a.title,
       a.slug,
@@ -210,13 +227,46 @@ async function fulltextSearch(params: ArticleSearchParams): Promise<{ data: Work
       a.created_at AS "createdAt",
       a.updated_at AS "updatedAt",
       ts_rank(a.search_vector, websearch_to_tsquery('english', ${params.q})) AS rank,
-      ts_headline('english', COALESCE(a.plain_text, ''), websearch_to_tsquery('english', ${params.q}), 'MaxWords=32, MinWords=8, ShortWord=3') AS snippet
-    FROM articles a
-    INNER JOIN categories c ON c.id = a.category_id
-    INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
-    LEFT JOIN users u ON u.id = a.last_edited_by_id
-    WHERE ${whereClause}
-    ORDER BY ts_rank(a.search_vector, websearch_to_tsquery('english', ${params.q})) DESC, a.updated_at DESC
+      ts_headline('english', COALESCE(a.plain_text, ''), websearch_to_tsquery('english', ${params.q}), 'MaxWords=32, MinWords=8, ShortWord=3') AS snippet,
+      'article' AS "sourceType",
+      NULL::uuid AS "attachmentId",
+      NULL::text AS "attachmentFilename",
+      NULL::text AS "attachmentMimeType"
+      FROM articles a
+      INNER JOIN categories c ON c.id = a.category_id
+      INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
+      LEFT JOIN users u ON u.id = a.last_edited_by_id
+      WHERE ${whereClause}
+      UNION ALL
+      SELECT
+      a.id,
+      a.title,
+      a.slug,
+      a.category_id AS "categoryId",
+      c.knowledge_base_id AS "knowledgeBaseId",
+      kb.name AS "knowledgeBaseName",
+      kb.slug AS "knowledgeBaseSlug",
+      a.author_id AS "authorId",
+      a.last_edited_by_id AS "lastEditedById",
+      u.name AS "lastEditedByName",
+      u.email AS "lastEditedByEmail",
+      a.status,
+      a.created_at AS "createdAt",
+      a.updated_at AS "updatedAt",
+      ts_rank(att.search_vector, websearch_to_tsquery('english', ${params.q})) AS rank,
+      ts_headline('english', COALESCE(att.extracted_text, ''), websearch_to_tsquery('english', ${params.q}), 'MaxWords=32, MinWords=8, ShortWord=3') AS snippet,
+      'attachment' AS "sourceType",
+      att.id AS "attachmentId",
+      att.filename AS "attachmentFilename",
+      att.mime_type AS "attachmentMimeType"
+      FROM attachments att
+      INNER JOIN articles a ON a.id = att.article_id
+      INNER JOIN categories c ON c.id = a.category_id
+      INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
+      LEFT JOIN users u ON u.id = a.last_edited_by_id
+      WHERE ${attachmentWhereClause}
+    ) results
+    ORDER BY rank DESC, "sourceType" ASC, "updatedAt" DESC
     LIMIT ${params.limit}
     OFFSET ${offset}
   `)) as unknown as WorkspaceSearchResult[];
@@ -236,7 +286,9 @@ async function semanticSearch(params: ArticleSearchParams): Promise<WorkspaceSea
   const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
   const rows = (await db.execute(sql`
-    SELECT
+    SELECT *
+    FROM (
+      SELECT
       a.id,
       a.title,
       a.slug,
@@ -253,14 +305,51 @@ async function semanticSearch(params: ArticleSearchParams): Promise<WorkspaceSea
       a.updated_at AS "updatedAt",
       ae.chunk_text AS "chunkText",
       ae.chunk_text AS snippet,
-      1 - (ae.embedding <=> ${vectorLiteral}::vector) AS similarity
-    FROM article_embeddings ae
-    INNER JOIN articles a ON a.id = ae.article_id
-    INNER JOIN categories c ON c.id = a.category_id
-    INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
-    LEFT JOIN users u ON u.id = a.last_edited_by_id
-    WHERE ${filters}
-    ORDER BY ae.embedding <=> ${vectorLiteral}::vector
+      1 - (ae.embedding <=> ${vectorLiteral}::vector) AS similarity,
+      ae.embedding <=> ${vectorLiteral}::vector AS distance,
+      'article' AS "sourceType",
+      NULL::uuid AS "attachmentId",
+      NULL::text AS "attachmentFilename",
+      NULL::text AS "attachmentMimeType"
+      FROM article_embeddings ae
+      INNER JOIN articles a ON a.id = ae.article_id
+      INNER JOIN categories c ON c.id = a.category_id
+      INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
+      LEFT JOIN users u ON u.id = a.last_edited_by_id
+      WHERE ${filters}
+      UNION ALL
+      SELECT
+      a.id,
+      a.title,
+      a.slug,
+      a.category_id AS "categoryId",
+      c.knowledge_base_id AS "knowledgeBaseId",
+      kb.name AS "knowledgeBaseName",
+      kb.slug AS "knowledgeBaseSlug",
+      a.author_id AS "authorId",
+      a.last_edited_by_id AS "lastEditedById",
+      u.name AS "lastEditedByName",
+      u.email AS "lastEditedByEmail",
+      a.status,
+      a.created_at AS "createdAt",
+      a.updated_at AS "updatedAt",
+      att_embed.chunk_text AS "chunkText",
+      att_embed.chunk_text AS snippet,
+      1 - (att_embed.embedding <=> ${vectorLiteral}::vector) AS similarity,
+      att_embed.embedding <=> ${vectorLiteral}::vector AS distance,
+      'attachment' AS "sourceType",
+      att.id AS "attachmentId",
+      att.filename AS "attachmentFilename",
+      att.mime_type AS "attachmentMimeType"
+      FROM attachment_embeddings att_embed
+      INNER JOIN attachments att ON att.id = att_embed.attachment_id
+      INNER JOIN articles a ON a.id = att.article_id
+      INNER JOIN categories c ON c.id = a.category_id
+      INNER JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
+      LEFT JOIN users u ON u.id = a.last_edited_by_id
+      WHERE ${filters}
+    ) results
+    ORDER BY distance ASC
     LIMIT ${params.limit}
   `)) as unknown as WorkspaceSearchResult[];
 
@@ -268,17 +357,23 @@ async function semanticSearch(params: ArticleSearchParams): Promise<WorkspaceSea
 }
 
 function reciprocalRankFusion(
-  fulltextResults: { id: string }[],
-  semanticResults: { id: string }[],
+  fulltextResults: WorkspaceSearchResult[],
+  semanticResults: WorkspaceSearchResult[],
   k = 60,
 ): string[] {
   const scores = new Map<string, number>();
+  const sourceKey = (result: WorkspaceSearchResult) =>
+    result.sourceType === 'attachment' && result.attachmentId
+      ? `attachment:${result.attachmentId}:${result.chunkText ?? result.snippet ?? ''}`
+      : `article:${result.id}`;
 
   fulltextResults.forEach((r, rank) => {
-    scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + rank + 1));
+    const key = sourceKey(r);
+    scores.set(key, (scores.get(key) ?? 0) + 1 / (k + rank + 1));
   });
   semanticResults.forEach((r, rank) => {
-    scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + rank + 1));
+    const key = sourceKey(r);
+    scores.set(key, (scores.get(key) ?? 0) + 1 / (k + rank + 1));
   });
 
   return [...scores.entries()]
@@ -302,13 +397,18 @@ export async function searchArticles(params: ArticleSearchParams): Promise<{ dat
   ]);
   const rankedIds = reciprocalRankFusion(fulltextResult.data, semanticResults);
   const resultMap = new Map<string, WorkspaceSearchResult>();
+  const sourceKey = (result: WorkspaceSearchResult) =>
+    result.sourceType === 'attachment' && result.attachmentId
+      ? `attachment:${result.attachmentId}:${result.chunkText ?? result.snippet ?? ''}`
+      : `article:${result.id}`;
 
   for (const result of fulltextResult.data) {
-    resultMap.set(result.id, result);
+    resultMap.set(sourceKey(result), result);
   }
   for (const result of semanticResults) {
-    if (!resultMap.has(result.id)) {
-      resultMap.set(result.id, result);
+    const key = sourceKey(result);
+    if (!resultMap.has(key)) {
+      resultMap.set(key, result);
     }
   }
 
