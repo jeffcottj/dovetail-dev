@@ -1,147 +1,106 @@
 # Integrating Dovetail with LibreChat
 
-This guide explains how to connect LibreChat to Dovetail's RAG API so that LLM conversations can reference your organization's legal knowledge base.
+LibreChat connects to Dovetail through the **Dovetail MCP server** (`apps/mcp`), which exposes Dovetail's knowledge bases as a set of read-only Model Context Protocol tools. This is the supported integration for LibreChat.
+
+For raw HTTP-only clients (without MCP support), the underlying REST endpoints are documented in [`docs/integrations/rag-api.md`](./rag-api.md).
 
 ## Prerequisites
 
-- A running Dovetail instance (e.g., `https://dovetail.example.com`)
-- Admin access to Dovetail (to create an API key)
-- A LibreChat instance with RAG endpoint configuration support
+- A running Dovetail instance, with `api`, `web`, `mcp`, and `postgres` services up.
+- Admin access to Dovetail (for creating an API key).
+- A LibreChat instance with MCP server support.
 
-## Step 1: Create a RAG API Key
+## Step 1: Create a Dovetail API key
 
-1. Log in to Dovetail as an admin
-2. Navigate to the admin panel and go to API Keys management
-3. Click "Create API Key" and give it a descriptive name (e.g., "LibreChat Production")
-4. **Copy the key immediately** — it is shown only once and cannot be retrieved later
-5. Store the key securely (e.g., in your secrets manager or environment variables)
+1. Sign in to Dovetail as a global admin.
+2. Open **Admin → API Keys**.
+3. Click **Create API Key**, name it (e.g. "LibreChat Production"), and **scope it to the KBs you want LibreChat to access**.
+4. Copy the key immediately — it is shown only once.
+5. Store it in your secrets manager.
 
-Alternatively, create a key via the API:
+The KBs you select here define the entire LibreChat scope. The MCP server has no separate scope configuration.
+
+## Step 2: Run the Dovetail MCP server
+
+The MCP server ships as a Compose service. In the same directory as `docker-compose.yml`:
 
 ```bash
-curl -X POST https://dovetail.example.com/api/admin/api-keys \
-  -H "Cookie: authjs.session-token=<your-admin-session>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "LibreChat Production"}'
+export MCP_API_KEY=<the-key-from-step-1>
+docker compose up -d mcp
 ```
 
-The response includes a `key` field — save this value.
+Confirm it is healthy:
 
-## Step 2: Configure LibreChat
+```bash
+docker compose ps mcp
+curl http://localhost:3002/health
+curl 'http://localhost:3002/health?deep=1'
+```
 
-Add the Dovetail RAG endpoint to your LibreChat configuration. The exact configuration depends on your LibreChat version, but the key settings are:
+`?deep=1` calls the upstream API once and reports whether the key authenticates correctly.
+
+Configuration variables are documented in [`docs/integrations/mcp.md`](./mcp.md).
+
+## Step 3: Point LibreChat at the MCP server
+
+Add the Dovetail MCP server to your LibreChat configuration. The exact YAML/JSON shape depends on your LibreChat version — check the [LibreChat MCP docs](https://www.librechat.ai/) for the current schema. The values you need:
 
 | Setting | Value |
-|---------|-------|
-| RAG Endpoint URL | `https://dovetail.example.com/api/v1/rag/search` |
-| HTTP Method | `POST` |
-| Authentication | `Bearer <your-api-key>` |
+|---|---|
+| Transport | `streamable-http` (also called "HTTP" or "Streamable HTTP") |
+| URL | `http://<mcp-host>:3002/mcp` |
+| Auth | none — the MCP server holds the Dovetail API key internally |
 
-### Environment variables
+A representative `librechat.yaml` snippet:
 
-```bash
-RAG_API_URL=https://dovetail.example.com/api/v1/rag/search
-RAG_API_KEY=<your-dovetail-api-key>
+```yaml
+mcpServers:
+  dovetail:
+    type: streamable-http
+    url: http://mcp:3002/mcp
 ```
 
-## Step 3: Test the Connection
+When LibreChat is on the same Docker Compose network as Dovetail, use `http://mcp:3002/mcp`. Otherwise use the public URL fronted by your reverse proxy.
 
-Verify the integration works by making a direct request:
+## Step 4: Verify the tools appear
 
-```bash
-curl -X POST https://dovetail.example.com/api/v1/rag/search \
-  -H "Authorization: Bearer <your-api-key>" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "what are tenant rights in Maryland", "limit": 5}'
-```
+After restarting LibreChat, the following six tools should be available to assistants:
 
-Expected response:
+- `list_knowledge_bases`
+- `list_categories`
+- `search_articles`
+- `get_article`
+- `get_article_citations`
+- `suggest_related_articles`
 
-```json
-{
-  "results": [
-    {
-      "articleId": "...",
-      "articleTitle": "Tenant Rights Overview",
-      "articleUrl": "/articles/tenant-rights-overview",
-      "chunkText": "Under Maryland law, tenants have the right to...",
-      "score": 0.94
-    }
-  ]
-}
-```
+Quick smoke test from inside a LibreChat conversation:
 
-## API Reference
+> *Use `list_knowledge_bases` to show me which KBs are available.*
 
-### `POST /api/v1/rag/search`
+Then:
 
-**Headers:**
-- `Authorization: Bearer <api-key>` (required)
-- `Content-Type: application/json`
+> *Use `search_articles` to find the top 3 articles about security deposits, citing sources via `get_article_citations`.*
 
-**Request body:**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `query` | string | Yes | — | The search query (1-5000 characters) |
-| `limit` | integer | No | 5 | Maximum number of chunks to return (1-50) |
-| `categoryIds` | string[] | No | — | Filter results to specific categories (UUIDs) |
-
-**Response:**
-
-```json
-{
-  "results": [
-    {
-      "articleId": "uuid",
-      "articleTitle": "string",
-      "articleUrl": "/articles/slug",
-      "chunkText": "string",
-      "score": 0.0-1.0
-    }
-  ]
-}
-```
-
-- `score` is cosine similarity between the query embedding and the chunk embedding (higher = more relevant)
-- Only chunks from **published** articles are returned
-- Results are ordered by relevance (highest score first)
-
-## Filtering by Category
-
-If your knowledge base has multiple content areas, you can restrict RAG results to specific categories:
-
-```json
-{
-  "query": "eviction notice requirements",
-  "limit": 5,
-  "categoryIds": ["category-uuid-1", "category-uuid-2"]
-}
-```
-
-This is useful when different LibreChat instances or channels should only access certain parts of the knowledge base.
-
-## Managing API Keys
-
-### List all keys
-```bash
-curl https://dovetail.example.com/api/admin/api-keys \
-  -H "Cookie: authjs.session-token=<admin-session>"
-```
-
-### Revoke a key
-```bash
-curl -X DELETE https://dovetail.example.com/api/admin/api-keys/<key-id> \
-  -H "Cookie: authjs.session-token=<admin-session>"
-```
-
-Revoked keys stop working immediately. Create a new key and update LibreChat's configuration if you need to rotate credentials.
+If the tools are missing or always error, check the MCP server logs (`docker compose logs -f mcp`) for upstream auth or scope errors.
 
 ## Troubleshooting
 
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| 401 Missing API key | No `Authorization` header | Add `Authorization: Bearer <key>` header |
-| 401 Invalid or revoked API key | Key not found or was revoked | Create a new key and update configuration |
-| 400 Validation error | Request body malformed | Check that `query` is a non-empty string |
-| Empty results | No published articles match, or embeddings not generated | Ensure articles are published and embedding generation has completed |
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| All tools return `unauthorized` | `MCP_API_KEY` missing, revoked, or wrong | Recreate the key in Dovetail admin and restart `mcp`. |
+| Tools return `forbidden` for some KBs | Key not scoped to that KB | Edit the API key in Dovetail admin to add that KB. |
+| `list_knowledge_bases` returns `[]` | Key has no KBs attached | Attach KBs via the admin UI. |
+| LibreChat does not see the MCP server | URL/port wrong, or LibreChat not on the network | Verify with `curl http://<mcp-host>:3002/health`. |
+| Drafts/archived articles never appear | Working as intended | Only published articles are exposed. |
+| `network` errors in MCP logs | API not reachable from MCP container | Check Compose `depends_on`/networking and that `MCP_API_BASE_URL` resolves from the MCP container. |
+
+## Rotating the API key
+
+1. Create a new API key in Dovetail admin with the same KB scope.
+2. Update the `MCP_API_KEY` secret.
+3. `docker compose up -d mcp` to restart the MCP service with the new key.
+4. Revoke the old key in Dovetail admin.
+
+## Direct REST integration (legacy)
+
+If you need to integrate a client that does not speak MCP, see [`docs/integrations/rag-api.md`](./rag-api.md). LibreChat itself should use the MCP integration described above.

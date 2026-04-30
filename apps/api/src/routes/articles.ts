@@ -9,7 +9,13 @@ import { paginationSchema, paginate } from '../utils/pagination.js';
 import { toSlug } from '../utils/slug.js';
 import { extractText } from '../utils/tiptap.js';
 import { resolveCategoryPath, buildCategoryPath } from '../utils/category-path.js';
-import { resolveRole, hasMinimumRole } from '../services/permissions.js';
+import {
+  canEditArticle,
+  canReadArticle,
+  getEditableCategoryIds,
+  hasMinimumRole,
+  resolveRole,
+} from '../services/permissions.js';
 import { generateEmbeddings } from '../services/embedding-pipeline.js';
 import type { AuthKbRequest, KbRequest } from '../middleware/resolveKb.js';
 import type { Role } from '@dovetail/types';
@@ -66,6 +72,11 @@ function withKnowledgeBaseSlug<T extends object>(article: T, kbSlug?: string) {
   return kbSlug ? { ...article, knowledgeBaseSlug: kbSlug } : article;
 }
 
+async function withLastEditor<T extends { authorId?: string; lastEditedById?: string | null }>(article: T) {
+  const lastEditedById = article.lastEditedById ?? article.authorId;
+  return lastEditedById ? { ...article, lastEditedById } : article;
+}
+
 async function loadScopedEditorArticle(req: AuthRequest, res: any, id: string) {
   const [article] = await db.select().from(articles).where(eq(articles.id, id));
   if (!article) {
@@ -83,10 +94,13 @@ async function loadScopedEditorArticle(req: AuthRequest, res: any, id: string) {
     return null;
   }
 
-  const effectiveRole = await resolveRole(
-    req.user!.id, article.categoryId, category?.knowledgeBaseId, req.user!.role as Role,
-  );
-  if (!hasMinimumRole(effectiveRole, 'editor')) {
+  const canEdit = await canEditArticle({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    categoryId: article.categoryId,
+    knowledgeBaseId: category?.knowledgeBaseId,
+  });
+  if (!canEdit) {
     res.status(403).json({ error: 'Forbidden' });
     return null;
   }
@@ -98,16 +112,42 @@ async function loadScopedEditorArticle(req: AuthRequest, res: any, id: string) {
 articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (req: KbRequest, res) => {
   const { page, limit, status, categoryId } = res.locals.query as z.infer<typeof listQuerySchema>;
   const offset = (page - 1) * limit;
+  const kbId = req.params.kbId as string;
+  const user = (req as AuthRequest).user!;
+  const globalRole = user.role as Role;
 
   const conditions: ReturnType<typeof eq>[] = [];
-  if (status) conditions.push(eq(articles.status, status));
+  if (status) {
+    conditions.push(eq(articles.status, status));
+  } else {
+    conditions.push(eq(articles.status, 'published'));
+  }
   if (categoryId) conditions.push(eq(articles.categoryId, categoryId));
 
-  const kbId = req.params.kbId as string | undefined;
   if (kbId) {
     conditions.push(
       inArray(articles.categoryId, sql`(SELECT id FROM categories WHERE knowledge_base_id = ${kbId})`),
     );
+  }
+
+  if (status && status !== 'published') {
+    const editableCategoryIds = await getEditableCategoryIds({
+      userId: user.id,
+      globalRole,
+      knowledgeBaseId: kbId,
+    });
+
+    if (categoryId && !editableCategoryIds.includes(categoryId)) {
+      res.json(paginate([], 0, { page, limit }));
+      return;
+    }
+
+    if (editableCategoryIds.length === 0) {
+      res.json(paginate([], 0, { page, limit }));
+      return;
+    }
+
+    conditions.push(inArray(articles.categoryId, editableCategoryIds));
   }
 
   const whereClause = conditions.length > 0
@@ -129,7 +169,7 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (r
 
   // Enrich with category paths
   const enriched = await Promise.all(
-    data.map(async (article) => ({
+    data.map(async (article) => withLastEditor({
       ...withKnowledgeBaseSlug(article, req.kb?.slug),
       categoryPath: await buildCategoryPath(article.categoryId),
     })),
@@ -172,7 +212,20 @@ articlesRouter.get('/by-path/{*path}', authMiddleware, async (req: KbRequest, re
   }
 
   const categoryPath = await buildCategoryPath(article.categoryId);
-  res.json(withKnowledgeBaseSlug({ ...article, categoryPath }, req.kb?.slug));
+
+  const canRead = await canReadArticle({
+    userId: (req as AuthRequest).user!.id,
+    globalRole: (req as AuthRequest).user!.role as Role,
+    categoryId: article.categoryId,
+    knowledgeBaseId: kbId!,
+    status: article.status,
+  });
+  if (!canRead) {
+    res.status(404).json({ error: 'Article not found' });
+    return;
+  }
+
+  res.json(await withLastEditor(withKnowledgeBaseSlug({ ...article, categoryPath }, req.kb?.slug)));
 });
 
 // GET /api/articles/:id
@@ -184,20 +237,30 @@ articlesRouter.get('/:id', authMiddleware, async (req: KbRequest, res) => {
     return;
   }
 
-  const kbId = req.params.kbId as string | undefined;
-  if (kbId) {
-    const [category] = await db.select({ knowledgeBaseId: categories.knowledgeBaseId })
-      .from(categories)
-      .where(eq(categories.id, article.categoryId));
+  const kbId = req.params.kbId as string;
+  const [category] = await db.select({ knowledgeBaseId: categories.knowledgeBaseId })
+    .from(categories)
+    .where(eq(categories.id, article.categoryId));
 
-    if (category?.knowledgeBaseId !== kbId) {
-      res.status(404).json({ error: 'Article not found' });
-      return;
-    }
+  if (category?.knowledgeBaseId !== kbId) {
+    res.status(404).json({ error: 'Article not found' });
+    return;
+  }
+
+  const canRead = await canReadArticle({
+    userId: (req as AuthRequest).user!.id,
+    globalRole: (req as AuthRequest).user!.role as Role,
+    categoryId: article.categoryId,
+    knowledgeBaseId: kbId,
+    status: article.status,
+  });
+  if (!canRead) {
+    res.status(404).json({ error: 'Article not found' });
+    return;
   }
 
   const categoryPath = await buildCategoryPath(article.categoryId);
-  res.json(withKnowledgeBaseSlug({ ...article, categoryPath }, req.kb?.slug));
+  res.json(await withLastEditor(withKnowledgeBaseSlug({ ...article, categoryPath }, req.kb?.slug)));
 });
 
 // POST /api/articles — create draft
@@ -232,6 +295,7 @@ articlesRouter.post('/', authMiddleware, validateBody(createArticleSchema), asyn
         slug: articleSlug,
         categoryId,
         authorId: req.user!.id,
+        lastEditedById: req.user!.id,
         content,
         plainText,
         status: 'draft',
@@ -299,7 +363,7 @@ articlesRouter.post('/', authMiddleware, validateBody(createArticleSchema), asyn
 
     void generateEmbeddings(created.id).catch(err => console.error('Embedding generation failed:', err));
     const categoryPath = await buildCategoryPath(created.categoryId);
-    res.status(201).json(withKnowledgeBaseSlug({ ...created, categoryPath }, req.kb?.slug));
+    res.status(201).json(await withLastEditor(withKnowledgeBaseSlug({ ...created, categoryPath }, req.kb?.slug)));
   } catch (err: any) {
     throw err;
   }
@@ -378,7 +442,7 @@ articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), 
       const nextVersion = (maxVersion?.max ?? 0) + 1;
 
       // 4. Apply updates with optimistic concurrency on the row we authorized.
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: new Date(), lastEditedById: req.user!.id };
       if (req.body.title !== undefined) {
         updates.title = req.body.title;
         updates.slug = toSlug(req.body.title);
@@ -467,7 +531,7 @@ articlesRouter.patch('/:id', authMiddleware, validateBody(updateArticleSchema), 
     if (didChange) {
       void generateEmbeddings(id).catch(err => console.error('Embedding generation failed:', err));
     }
-    res.json(withKnowledgeBaseSlug(result, req.kb?.slug));
+    res.json(await withLastEditor(withKnowledgeBaseSlug(result, req.kb?.slug)));
   }
 });
 
@@ -481,7 +545,7 @@ articlesRouter.delete('/:id', authMiddleware, async (req: AuthKbRequest, res) =>
 
   const [archived] = await db
     .update(articles)
-    .set({ status: 'archived', updatedAt: new Date() })
+    .set({ status: 'archived', updatedAt: new Date(), lastEditedById: req.user!.id })
     .where(buildArticleCurrentStatePredicate(article))
     .returning();
 
@@ -489,7 +553,7 @@ articlesRouter.delete('/:id', authMiddleware, async (req: AuthKbRequest, res) =>
     res.status(409).json({ error: 'Article changed during archive' });
     return;
   }
-  res.json(withKnowledgeBaseSlug(archived, req.kb?.slug));
+  res.json(await withLastEditor(withKnowledgeBaseSlug(archived, req.kb?.slug)));
 });
 
 // POST /api/articles/:id/publish
@@ -502,7 +566,7 @@ articlesRouter.post('/:id/publish', authMiddleware, async (req: AuthKbRequest, r
 
   const [published] = await db
     .update(articles)
-    .set({ status: 'published', publishedAt: new Date(), updatedAt: new Date() })
+    .set({ status: 'published', publishedAt: new Date(), updatedAt: new Date(), lastEditedById: req.user!.id })
     .where(buildArticleCurrentStatePredicate(article))
     .returning();
 
@@ -510,5 +574,5 @@ articlesRouter.post('/:id/publish', authMiddleware, async (req: AuthKbRequest, r
     res.status(409).json({ error: 'Article changed during publish' });
     return;
   }
-  res.json(withKnowledgeBaseSlug(published, req.kb?.slug));
+  res.json(await withLastEditor(withKnowledgeBaseSlug(published, req.kb?.slug)));
 });

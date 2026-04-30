@@ -68,8 +68,23 @@ describe('getAdminNavSections', () => {
       { label: 'Users & Roles', href: '/kb/housing/admin/users', active: true },
       { label: 'Tags', href: '/kb/housing/admin/tags', active: false },
       { label: 'Import', href: '/kb/housing/admin/import', active: false },
+      { label: 'Maintenance', href: '/kb/housing/admin/maintenance', active: false },
+      { label: 'Settings', href: '/kb/housing/admin/settings', active: false },
       { label: 'Recent Activity', href: '/kb/housing/admin/activity', active: false },
     ]);
+  });
+
+  it('marks KB settings active', () => {
+    const sections = getAdminNavSections({
+      pathname: '/kb/housing/admin/settings',
+      kb: { slug: 'housing', name: 'Housing' },
+    });
+
+    const settingsItem = sections[0].items.find((item) => item.label === 'Settings');
+    expect(settingsItem).toMatchObject({
+      href: '/kb/housing/admin/settings',
+      active: true,
+    });
   });
 });
 

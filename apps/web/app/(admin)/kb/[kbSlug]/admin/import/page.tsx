@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { auth } from '../../../../../../auth';
 import { AdminWorkspaceLayout } from '../../../../../../components/admin/AdminWorkspaceLayout';
-import ImportWizard from '../../../../../../components/ImportWizard';
+import { ImportAdminPanel } from '../../../../../../components/ImportAdminPanel';
 import { Card } from '../../../../../../components/ui/Card';
 import { getAdminNavSections } from '../../../../../../lib/admin/nav';
 import {
@@ -49,7 +49,7 @@ export default async function KbImportPage({ params }: { params: Promise<{ kbSlu
             <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-light">{overviewWarning}</p>
           </Card>
         ) : null}
-        <ImportWizard kbId={kbContext.id} />
+        <ImportAdminPanel kbId={kbContext.id} />
       </section>
     </AdminWorkspaceLayout>
   );

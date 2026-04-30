@@ -19,4 +19,19 @@ describe('formatAdminActivityLine', () => {
     expect(line).toContain('Alex Lee');
     expect(line).toContain('admin');
   });
+
+  it('formats KB access policy changes with a readable label', () => {
+    const activity = {
+      id: 'evt-2',
+      kind: 'kb.access_changed',
+      actor: { id: 'u1', name: 'Jane Smith', email: 'jane@example.com' },
+      subject: { id: 'kb-1', label: 'Housing' },
+      createdAt: '2026-03-28T12:00:00.000Z',
+      metadata: { from: 'org_viewer', to: 'private' },
+    } satisfies AdminActivityItem;
+
+    const line = formatAdminActivityLine(activity);
+
+    expect(line).toBe('Jane Smith changed Housing access to Private');
+  });
 });

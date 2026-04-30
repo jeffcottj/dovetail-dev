@@ -6,26 +6,40 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { resolveKb, requireKbAdmin } from '../middleware/resolveKb.js';
 import { buildAdminActivityInsert } from '../services/admin-activity.js';
+import { canViewKnowledgeBase, listVisibleKnowledgeBases } from '../services/permissions.js';
 import { validateBody } from '../utils/validate.js';
 import { toSlug } from '../utils/slug.js';
+import type { KbDefaultAccess, Role } from '@dovetail/types';
 
 export const knowledgeBasesRouter: Router = Router();
 const KNOWLEDGE_BASE_DELETE_CONFLICT = 'KNOWLEDGE_BASE_DELETE_CONFLICT';
 const KNOWLEDGE_BASE_DELETE_NOT_FOUND = 'KNOWLEDGE_BASE_DELETE_NOT_FOUND';
 
+const kbDefaultAccessSchema = z.enum(['org_viewer', 'private']);
+
 const createKbSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(1000).optional(),
+  defaultAccess: kbDefaultAccessSchema.default('org_viewer'),
 });
 
 const updateKbSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(1000).nullable().optional(),
+  defaultAccess: kbDefaultAccessSchema.optional(),
 });
 
-// GET /api/knowledge-bases — list all KBs
-knowledgeBasesRouter.get('/', authMiddleware, async (_req, res) => {
-  const result = await db.select().from(knowledgeBases);
+async function resolveKbFromId(req: AuthRequest, res: Parameters<typeof resolveKb>[1], next: Parameters<typeof resolveKb>[2]) {
+  req.params.kbId = req.params.id as string;
+  return resolveKb(req, res, next);
+}
+
+// GET /api/knowledge-bases — list KBs visible to the current user
+knowledgeBasesRouter.get('/', authMiddleware, async (req: AuthRequest, res) => {
+  const result = await listVisibleKnowledgeBases({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+  });
   res.json(result);
 });
 
@@ -36,11 +50,15 @@ knowledgeBasesRouter.post(
   requireRole('admin'),
   validateBody(createKbSchema),
   async (req: AuthRequest, res) => {
-    const { name, description } = req.body;
+    const { name, description, defaultAccess } = req.body as {
+      name: string;
+      description?: string;
+      defaultAccess: KbDefaultAccess;
+    };
     const slug = toSlug(name);
     try {
       const created = await db.transaction(async (tx) => {
-        const [created] = await tx.insert(knowledgeBases).values({ name, slug, description: description ?? null }).returning();
+        const [created] = await tx.insert(knowledgeBases).values({ name, slug, description: description ?? null, defaultAccess }).returning();
         if (!created) {
           throw new Error('Knowledge base creation failed');
         }
@@ -50,6 +68,7 @@ knowledgeBasesRouter.post(
           knowledgeBaseId: created.id,
           subjectId: created.id,
           subjectLabel: created.name,
+          metadata: { defaultAccess },
         }));
         return created;
       });
@@ -58,7 +77,7 @@ knowledgeBasesRouter.post(
       if (err.code === '23505' && err.constraint_name?.includes('slug')) {
         const uniqueSlug = `${slug}-${Date.now().toString(36)}`;
         const created = await db.transaction(async (tx) => {
-          const [created] = await tx.insert(knowledgeBases).values({ name, slug: uniqueSlug, description: description ?? null }).returning();
+          const [created] = await tx.insert(knowledgeBases).values({ name, slug: uniqueSlug, description: description ?? null, defaultAccess }).returning();
           if (!created) {
             throw new Error('Knowledge base creation failed');
           }
@@ -68,6 +87,7 @@ knowledgeBasesRouter.post(
             knowledgeBaseId: created.id,
             subjectId: created.id,
             subjectLabel: created.name,
+            metadata: { defaultAccess },
           }));
           return created;
         });
@@ -86,17 +106,30 @@ knowledgeBasesRouter.get('/:id', authMiddleware, async (req, res) => {
     res.status(404).json({ error: 'Knowledge base not found' });
     return;
   }
+
+  const visible = await canViewKnowledgeBase({
+    userId: (req as AuthRequest).user!.id,
+    globalRole: (req as AuthRequest).user!.role as Role,
+    knowledgeBaseId: kb.id,
+  });
+  if (!visible) {
+    res.status(404).json({ error: 'Knowledge base not found' });
+    return;
+  }
+
   res.json(kb);
 });
 
-// PATCH /api/knowledge-bases/:id — update KB (global admin only for now)
+// PATCH /api/knowledge-bases/:id — update KB (global admin or KB admin)
 knowledgeBasesRouter.patch(
   '/:id',
   authMiddleware,
-  requireRole('admin'),
+  resolveKbFromId,
+  requireKbAdmin,
   validateBody(updateKbSchema),
-  async (req, res) => {
+  async (req: AuthRequest, res) => {
     const id = req.params.id as string;
+    const previousKb = (req as AuthRequest & { kb?: { name: string; defaultAccess?: KbDefaultAccess } }).kb;
     const updates: Record<string, unknown> = {};
     if (req.body.name !== undefined) {
       updates.name = req.body.name;
@@ -105,8 +138,40 @@ knowledgeBasesRouter.patch(
     if (req.body.description !== undefined) {
       updates.description = req.body.description;
     }
+    if (req.body.defaultAccess !== undefined) {
+      updates.defaultAccess = req.body.defaultAccess;
+    }
 
-    const [updated] = await db.update(knowledgeBases).set(updates).where(eq(knowledgeBases.id, id)).returning();
+    if (Object.keys(updates).length === 0) {
+      res.json(previousKb);
+      return;
+    }
+
+    const updated = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(knowledgeBases).set(updates).where(eq(knowledgeBases.id, id)).returning();
+      if (!updated) return null;
+
+      if (
+        req.body.defaultAccess !== undefined
+        && previousKb?.defaultAccess !== undefined
+        && req.body.defaultAccess !== previousKb.defaultAccess
+      ) {
+        await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+          kind: 'kb.access_changed',
+          actorId: req.user!.id,
+          knowledgeBaseId: id,
+          subjectId: id,
+          subjectLabel: previousKb.name,
+          metadata: {
+            from: previousKb.defaultAccess,
+            to: req.body.defaultAccess,
+          },
+        }));
+      }
+
+      return updated;
+    });
+
     if (!updated) {
       res.status(404).json({ error: 'Knowledge base not found' });
       return;

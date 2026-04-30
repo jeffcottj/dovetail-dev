@@ -31,6 +31,8 @@ export function getAdminNavSections(input: AdminNavInput): AdminNavSection[] {
           { label: 'Users & Roles', href: `/kb/${input.kb.slug}/admin/users`, active: isDescendant(`/kb/${input.kb.slug}/admin/users`) },
           { label: 'Tags', href: `/kb/${input.kb.slug}/admin/tags`, active: isExact(`/kb/${input.kb.slug}/admin/tags`) },
           { label: 'Import', href: `/kb/${input.kb.slug}/admin/import`, active: isExact(`/kb/${input.kb.slug}/admin/import`) },
+          { label: 'Maintenance', href: `/kb/${input.kb.slug}/admin/maintenance`, active: isExact(`/kb/${input.kb.slug}/admin/maintenance`) },
+          { label: 'Settings', href: `/kb/${input.kb.slug}/admin/settings`, active: isExact(`/kb/${input.kb.slug}/admin/settings`) },
           { label: 'Recent Activity', href: `/kb/${input.kb.slug}/admin/activity`, active: isExact(`/kb/${input.kb.slug}/admin/activity`) },
         ],
       },

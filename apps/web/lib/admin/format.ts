@@ -9,6 +9,12 @@ function formatSubjectLabel(item: AdminActivityItem): string {
   return item.subject.label || item.knowledgeBase?.name || 'item';
 }
 
+function formatDefaultAccess(value: unknown): string {
+  if (value === 'private') return 'Private';
+  if (value === 'org_viewer') return 'Org-visible';
+  return 'unknown';
+}
+
 export function formatAdminActivityLine(item: AdminActivityItem): string {
   const subjectLabel = formatSubjectLabel(item);
 
@@ -21,6 +27,8 @@ export function formatAdminActivityLine(item: AdminActivityItem): string {
       return `${item.actor.name} deleted user ${subjectLabel}`;
     case 'kb.created':
       return `${item.actor.name} created knowledge base ${subjectLabel}`;
+    case 'kb.access_changed':
+      return `${item.actor.name} changed ${subjectLabel} access to ${formatDefaultAccess(item.metadata.to)}`;
     case 'kb.deleted':
       return `${item.actor.name} deleted knowledge base ${subjectLabel}`;
     case 'import.started':

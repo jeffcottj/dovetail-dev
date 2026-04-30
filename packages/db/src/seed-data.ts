@@ -70,18 +70,21 @@ export const DEV_KNOWLEDGE_BASES = {
     name: 'Housing',
     slug: 'housing',
     description: 'Housing knowledge base',
+    defaultAccess: 'org_viewer' as const,
   },
   family: {
     id: FAMILY_KB_ID,
     name: 'Family',
     slug: 'family',
     description: 'Family law knowledge base',
+    defaultAccess: 'org_viewer' as const,
   },
   consumer: {
     id: CONSUMER_KB_ID,
     name: 'Consumer',
     slug: 'consumer',
     description: 'Consumer protection knowledge base',
+    defaultAccess: 'org_viewer' as const,
   },
 };
 

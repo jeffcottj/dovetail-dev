@@ -1,0 +1,38 @@
+# Dovetail Caddy configuration for the Azure VM Docker Compose deployment.
+#
+# The Compose file mounts this at /etc/caddy/Caddyfile and supplies
+# DOVETAIL_DOMAIN through the environment.
+
+{$DOVETAIL_DOMAIN} {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    # Auth.js routes live in the Next.js app, including OAuth callbacks.
+    handle /api/auth/* {
+        reverse_proxy web:3000
+    }
+
+    # Public web health endpoint for Caddy and external uptime probes.
+    handle /api/health {
+        reverse_proxy web:3000
+    }
+
+    # App and integration API routes live in Express.
+    handle /api/* {
+        reverse_proxy api:3001
+    }
+
+    # Keep MCP internal by default. If an external MCP client needs access,
+    # add an access-controlled route here before exposing /mcp publicly.
+    # handle /mcp* {
+    #     reverse_proxy mcp:3002
+    # }
+
+    handle {
+        reverse_proxy web:3000
+    }
+}

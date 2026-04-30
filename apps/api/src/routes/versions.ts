@@ -1,16 +1,53 @@
 import { Router } from 'express';
 import { eq, sql } from 'drizzle-orm';
-import { db, articles, articleVersions } from '@dovetail/db';
+import { db, articles, articleVersions, categories } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
-import { requireRole } from '../middleware/requireRole.js';
+import { canEditArticle } from '../services/permissions.js';
 import { validateQuery } from '../utils/validate.js';
 import { paginationSchema, paginate } from '../utils/pagination.js';
+import type { Role } from '@dovetail/types';
 
 export const versionsRouter: Router = Router({ mergeParams: true });
 
-// GET /api/articles/:id/versions — paginated list
-versionsRouter.get('/', authMiddleware, validateQuery(paginationSchema), async (req, res) => {
+async function requireVersionArticleEditor(req: AuthRequest, res: any) {
   const articleId = req.params.id as string;
+  const kbId = req.params.kbId as string;
+  const [article] = await db.select({
+    id: articles.id,
+    title: articles.title,
+    content: articles.content,
+    categoryId: articles.categoryId,
+    knowledgeBaseId: categories.knowledgeBaseId,
+  })
+    .from(articles)
+    .innerJoin(categories, eq(articles.categoryId, categories.id))
+    .where(eq(articles.id, articleId));
+
+  if (!article || article.knowledgeBaseId !== kbId) {
+    res.status(404).json({ error: 'Article not found' });
+    return null;
+  }
+
+  const canEdit = await canEditArticle({
+    userId: req.user!.id,
+    globalRole: req.user!.role as Role,
+    categoryId: article.categoryId,
+    knowledgeBaseId: article.knowledgeBaseId,
+  });
+  if (!canEdit) {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+
+  return article;
+}
+
+// GET /api/articles/:id/versions — paginated list
+versionsRouter.get('/', authMiddleware, validateQuery(paginationSchema), async (req: AuthRequest, res) => {
+  const articleId = req.params.id as string;
+  const article = await requireVersionArticleEditor(req, res);
+  if (!article) return;
+
   const { page, limit } = res.locals.query as { page: number; limit: number };
   const offset = (page - 1) * limit;
 
@@ -31,12 +68,16 @@ versionsRouter.get('/', authMiddleware, validateQuery(paginationSchema), async (
 });
 
 // GET /api/articles/:id/versions/:versionId
-versionsRouter.get('/:versionId', authMiddleware, async (req, res) => {
+versionsRouter.get('/:versionId', authMiddleware, async (req: AuthRequest, res) => {
+  const article = await requireVersionArticleEditor(req, res);
+  if (!article) return;
+
   const versionId = req.params.versionId as string;
+  const articleId = req.params.id as string;
   const [version] = await db
     .select()
     .from(articleVersions)
-    .where(eq(articleVersions.id, versionId));
+    .where(sql`${articleVersions.id} = ${versionId} AND ${articleVersions.articleId} = ${articleId}`);
 
   if (!version) {
     res.status(404).json({ error: 'Version not found' });
@@ -46,14 +87,18 @@ versionsRouter.get('/:versionId', authMiddleware, async (req, res) => {
 });
 
 // POST /api/articles/:id/versions/:versionId/restore
-versionsRouter.post('/:versionId/restore', authMiddleware, requireRole('editor'), async (req: AuthRequest, res) => {
+versionsRouter.post('/:versionId/restore', authMiddleware, async (req: AuthRequest, res) => {
   const articleId = req.params.id as string;
   const versionId = req.params.versionId as string;
+  const article = await requireVersionArticleEditor(req, res);
+  if (!article) return;
 
   let result: any;
   await db.transaction(async (tx) => {
     // 1. Fetch the old version to restore
-    const [oldVersion] = await tx.select().from(articleVersions).where(eq(articleVersions.id, versionId));
+    const [oldVersion] = await tx.select().from(articleVersions).where(
+      sql`${articleVersions.id} = ${versionId} AND ${articleVersions.articleId} = ${articleId}`,
+    );
     if (!oldVersion) {
       res.status(404).json({ error: 'Version not found' });
       return;
@@ -87,6 +132,7 @@ versionsRouter.post('/:versionId/restore', authMiddleware, requireRole('editor')
       title: oldVersion.title,
       content: oldVersion.content,
       updatedAt: new Date(),
+      lastEditedById: req.user!.id,
     }).where(eq(articles.id, articleId)).returning();
 
     result = restored;

@@ -43,7 +43,16 @@ stack:
   docker compose up --build
 
 stack-logs:
-  docker compose logs -f postgres api web
+  docker compose logs -f postgres api web mcp
+
+mcp-dev:
+  pnpm --filter @dovetail/mcp dev
+
+mcp-up:
+  docker compose up --build mcp
+
+logs-mcp:
+  docker compose logs -f mcp
 
 smoke:
   node scripts/dev/smoke.mjs

@@ -3,18 +3,17 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import Link from '@tiptap/extension-link';
-import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import { EditorToolbar } from './EditorToolbar';
 import { apiClientFetch } from '../lib/api-client';
 import { useToast } from '../lib/hooks/useToast';
 import { useOptionalKb } from '../lib/hooks/useKb';
+import { articleEditorExtensions } from '../lib/editor/extensions';
 import { Button } from './ui/Button';
 import { TagPicker } from './TagPicker';
+import { AttachmentManager } from './AttachmentManager';
+import { DocxImportControl } from './DocxImportControl';
 import { articleUrl } from '../lib/article-url';
-import type { Article } from '@dovetail/types';
+import type { Article, DocxConversionResult } from '@dovetail/types';
 
 export function ArticleEditor({ article }: { article: Article }) {
   const router = useRouter();
@@ -24,9 +23,10 @@ export function ArticleEditor({ article }: { article: Article }) {
   const [title, setTitle] = useState(article.title);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [attachmentRefreshKey, setAttachmentRefreshKey] = useState(0);
 
   const editor = useEditor({
-    extensions: [StarterKit, Image, Link.configure({ openOnClick: false }), Table.configure({ resizable: false }), TableRow, TableCell, TableHeader],
+    extensions: articleEditorExtensions(),
     content: article.content as Parameters<typeof useEditor>[0] extends { content?: infer C } ? C : never,
     immediatelyRender: false,
     editorProps: {
@@ -82,6 +82,34 @@ export function ArticleEditor({ article }: { article: Article }) {
     }
   }, [editor, article.id, article.slug, title, router, toast, apiBase]);
 
+  const uploadRetainedDocx = useCallback(async (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await fetch(`${apiBase}/articles/${article.id}/attachments`, {
+      method: 'POST',
+      credentials: 'include',
+      body,
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    setAttachmentRefreshKey((key) => key + 1);
+  }, [apiBase, article.id]);
+
+  const handleDocxConverted = useCallback(async (result: DocxConversionResult, file: File, retainOriginal: boolean) => {
+    if (!editor) return false;
+    if (editor.getText().trim() && !window.confirm('Replace the current article content with the converted document?')) {
+      return false;
+    }
+    editor.commands.setContent(result.content);
+    if (retainOriginal) {
+      try {
+        await uploadRetainedDocx(file);
+      } catch {
+        toast.error('Content converted, but the original Word document was not attached');
+      }
+    }
+    return true;
+  }, [editor, toast, uploadRetainedDocx]);
+
   return (
     <div>
       {/* Toolbar */}
@@ -119,6 +147,13 @@ export function ArticleEditor({ article }: { article: Article }) {
       {/* Tags */}
       <TagPicker articleId={article.id} />
 
+      <DocxImportControl
+        apiBase={apiBase}
+        articleId={article.id}
+        disabled={saving || publishing}
+        onConverted={handleDocxConverted}
+      />
+
       {/* Editor */}
       {editor && <EditorToolbar editor={editor} />}
       <div className="tiptap-content bg-parchment-warm rounded-lg border border-border-light rounded-t-none p-6 min-h-[400px]">
@@ -131,6 +166,8 @@ export function ArticleEditor({ article }: { article: Article }) {
           </div>
         )}
       </div>
+
+      <AttachmentManager articleId={article.id} refreshKey={attachmentRefreshKey} />
     </div>
   );
 }

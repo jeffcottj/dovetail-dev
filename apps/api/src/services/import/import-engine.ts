@@ -2,13 +2,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { eq, and, sql } from 'drizzle-orm';
-import { db, categories, articles, attachments, importJobs } from '@dovetail/db';
+import { db, categories, articles, attachments, importJobs, tags, articleTags } from '@dovetail/db';
 import { toSlug } from '../../utils/slug.js';
 import { extractText } from '../../utils/tiptap.js';
 import { getUploadsDir, ensureDir, copyFile } from '../../utils/storage.js';
 import { parseDataJson, buildCategoryTree, type FlowluArticle } from './flowlu-parser.js';
 import { extractArticleBody, extractDateModified } from './html-extractor.js';
 import { htmlToTiptap } from './html-to-tiptap.js';
+import { enqueueAttachmentIndexing } from '../attachment-indexing.js';
+import { generateEmbeddings } from '../embedding-pipeline.js';
 import mime from 'mime-types';
 
 export type ProgressEvent =
@@ -42,6 +44,14 @@ export class ImportEngine {
     for (const listener of this.listeners) {
       listener(event);
     }
+  }
+
+  private async appendJobLog(entry: { article_title: string; error_message: string }) {
+    await db.update(importJobs)
+      .set({
+        errorLog: sql`${importJobs.errorLog} || ${JSON.stringify([entry])}::jsonb`,
+      })
+      .where(eq(importJobs.id, this.opts.jobId));
   }
 
   async run(): Promise<void> {
@@ -82,11 +92,7 @@ export class ImportEngine {
           this.emit({ type: 'error', article: art.title, message });
 
           // Log error to job
-          await db.update(importJobs)
-            .set({
-              errorLog: sql`${importJobs.errorLog} || ${JSON.stringify([{ article_title: art.title, error_message: message }])}::jsonb`,
-            })
-            .where(eq(importJobs.id, this.opts.jobId));
+          await this.appendJobLog({ article_title: art.title, error_message: message });
         }
       }
 
@@ -161,6 +167,75 @@ export class ImportEngine {
     return map;
   }
 
+  private normalizedTagNames(tagNames: string[]): string[] {
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+
+    for (const rawName of tagNames) {
+      const name = rawName.trim();
+      const key = name.toLocaleLowerCase();
+      if (!name || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      normalized.push(name);
+    }
+
+    return normalized;
+  }
+
+  private async findTag(name: string, slug: string): Promise<string | null> {
+    const existing = await db.select({ id: tags.id })
+      .from(tags)
+      .where(sql`
+        ${tags.knowledgeBaseId} = ${this.opts.knowledgeBaseId}
+        AND (
+          lower(${tags.name}) = lower(${name})
+          OR lower(${tags.slug}) = lower(${slug})
+        )
+      `)
+      .limit(1);
+
+    return existing[0]?.id ?? null;
+  }
+
+  private async getOrCreateTagId(name: string): Promise<string> {
+    const slug = toSlug(name);
+    const existingId = await this.findTag(name, slug);
+    if (existingId) {
+      return existingId;
+    }
+
+    try {
+      const [created] = await db.insert(tags)
+        .values({ name, slug, knowledgeBaseId: this.opts.knowledgeBaseId })
+        .returning({ id: tags.id });
+      return created.id;
+    } catch (err: any) {
+      if (err.code === '23505') {
+        const racedId = await this.findTag(name, slug);
+        if (racedId) {
+          return racedId;
+        }
+      }
+      throw err;
+    }
+  }
+
+  private async assignTags(articleId: string, tagNames: string[]): Promise<void> {
+    const normalized = this.normalizedTagNames(tagNames);
+    if (normalized.length === 0) {
+      return;
+    }
+
+    for (const name of normalized) {
+      const tagId = await this.getOrCreateTagId(name);
+      await db.insert(articleTags)
+        .values({ articleId, tagId })
+        .onConflictDoNothing();
+    }
+  }
+
   /**
    * Import a single article: parse HTML, convert to TipTap, insert, copy attachments.
    */
@@ -216,6 +291,7 @@ export class ImportEngine {
       slug,
       categoryId,
       authorId: this.opts.userId,
+      lastEditedById: this.opts.userId,
       content,
       plainText,
       status: this.opts.defaultStatus,
@@ -224,6 +300,18 @@ export class ImportEngine {
       publishedAt,
     }).returning();
     articleId = created.id;
+
+    await this.assignTags(articleId, art.tags);
+
+    try {
+      await generateEmbeddings(articleId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Embedding generation failed';
+      await this.appendJobLog({
+        article_title: art.title,
+        error_message: `Article embedding generation failed: ${message}`,
+      });
+    }
 
     // Copy attachments
     const imagesDir = path.join(this.opts.extractDir, 'assets', 'images', art.id);
@@ -248,7 +336,9 @@ export class ImportEngine {
           storagePath,
           mimeType: mime.lookup(file) || 'application/octet-stream',
           sizeBytes: stat.size,
+          extractionStatus: 'pending',
         });
+        enqueueAttachmentIndexing(attachmentId);
       }
     } catch { /* no images directory for this article */ }
   }

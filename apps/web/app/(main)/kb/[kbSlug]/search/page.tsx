@@ -6,22 +6,9 @@ import { getKbBySlug } from '../../../../../lib/kb';
 import { SearchFilters } from '../../../../../components/SearchFilters';
 import { Badge } from '../../../../../components/ui/Badge';
 import { articleUrl } from '../../../../../lib/article-url';
-import type { Category } from '@dovetail/types';
+import type { Category, WorkspaceSearchResult } from '@dovetail/types';
 
-interface SearchResult {
-  id: string;
-  title: string;
-  slug: string;
-  categoryId: string;
-  categoryPath?: string[];
-  authorId: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  rank?: number;
-  similarity?: number;
-  chunkText?: string;
-}
+type SearchResult = WorkspaceSearchResult;
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -35,6 +22,23 @@ const MODE_DISPLAY: Record<string, string> = {
   semantic: 'AI-powered',
   hybrid: 'hybrid',
 };
+
+function lastEditedLabel(result: SearchResult) {
+  const date = new Date(result.updatedAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  return result.lastEditedByName
+    ? `Last edited by ${result.lastEditedByName} on ${date}`
+    : `Last edited ${date}`;
+}
+
+function sourceLabel(result: SearchResult) {
+  return result.sourceType === 'attachment' && result.attachmentFilename
+    ? `Attachment: ${result.attachmentFilename}`
+    : 'Article body';
+}
 
 export default async function KbSearchPage({
   params,
@@ -50,6 +54,7 @@ export default async function KbSearchPage({
     from?: string;
     to?: string;
     tags?: string;
+    onlyEditable?: string;
   }>;
 }) {
   const { kbSlug } = await params;
@@ -66,7 +71,7 @@ export default async function KbSearchPage({
   }
 
   const sp = await searchParams;
-  const { q, page: pageStr, mode, categoryId, authorId, from, to, tags } = sp;
+  const { q, page: pageStr, mode, categoryId, authorId, from, to, tags, onlyEditable } = sp;
 
   if (!q) {
     return (
@@ -98,6 +103,7 @@ export default async function KbSearchPage({
   if (from) apiParams.set('from', from);
   if (to) apiParams.set('to', to);
   if (tags) apiParams.set('tags', tags);
+  if (onlyEditable) apiParams.set('onlyEditable', onlyEditable);
 
   let results: PaginatedResponse<SearchResult>;
   let categoryMap = new Map<string, string>();
@@ -135,6 +141,7 @@ export default async function KbSearchPage({
     if (from) p.set('from', from);
     if (to) p.set('to', to);
     if (tags) p.set('tags', tags);
+    if (onlyEditable) p.set('onlyEditable', onlyEditable);
     return `/kb/${kbSlug}/search?${p.toString()}`;
   }
 
@@ -187,20 +194,27 @@ export default async function KbSearchPage({
                         {result.title}
                       </h2>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
-                        {categoryMap.get(result.categoryId) && (
+                        {result.categoryPath && result.categoryPath.length > 0 ? (
+                          <span className="text-xs text-accent font-[family-name:var(--font-ui)]">
+                            {result.categoryPath.join(' / ')}
+                          </span>
+                        ) : categoryMap.get(result.categoryId) ? (
                           <span className="text-xs text-accent font-[family-name:var(--font-ui)]">
                             {categoryMap.get(result.categoryId)}
                           </span>
-                        )}
+                        ) : null}
                         <span className="text-xs text-ink-muted font-[family-name:var(--font-ui)]">
-                          Updated{' '}
-                          {new Date(result.updatedAt).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
+                          {lastEditedLabel(result)}
+                        </span>
+                        <span className="text-xs text-ink-muted font-[family-name:var(--font-ui)]">
+                          {sourceLabel(result)}
                         </span>
                       </div>
+                      {result.snippet ? (
+                        <p className="mt-2 line-clamp-2 text-sm text-ink-muted">
+                          {result.snippet.replace(/<[^>]+>/g, '')}
+                        </p>
+                      ) : null}
                     </div>
                     {/* Relevance indicator */}
                     {result.similarity != null && (

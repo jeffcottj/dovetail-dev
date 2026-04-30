@@ -18,6 +18,14 @@ import {
 export const roleEnum = pgEnum('role', ['viewer', 'editor', 'admin']);
 export const providerEnum = pgEnum('oauth_provider', ['google', 'entra']);
 export const statusEnum = pgEnum('article_status', ['draft', 'published', 'archived']);
+export const kbDefaultAccessEnum = pgEnum('kb_default_access', ['org_viewer', 'private']);
+export const attachmentExtractionStatusEnum = pgEnum('attachment_extraction_status', [
+  'pending',
+  'processing',
+  'succeeded',
+  'failed',
+  'unsupported',
+]);
 
 // -- Knowledge Bases --
 
@@ -26,6 +34,7 @@ export const knowledgeBases = pgTable('knowledge_bases', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   description: text('description'),
+  defaultAccess: kbDefaultAccessEnum('default_access').notNull().default('org_viewer'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -94,6 +103,7 @@ export const articles = pgTable('articles', {
   slug: text('slug').notNull(),
   categoryId: uuid('category_id').notNull().references(() => categories.id),
   authorId: uuid('author_id').notNull().references(() => users.id),
+  lastEditedById: uuid('last_edited_by_id').notNull().references(() => users.id),
   content: jsonb('content').notNull().default({}),
   status: statusEnum('status').notNull().default('draft'),
   plainText: text('plain_text'),
@@ -172,6 +182,12 @@ export const attachments = pgTable('attachments', {
   storagePath: text('storage_path').notNull(),
   mimeType: text('mime_type').notNull(),
   sizeBytes: integer('size_bytes').notNull(),
+  extractionStatus: attachmentExtractionStatusEnum('extraction_status').notNull().default('pending'),
+  extractedText: text('extracted_text'),
+  extractionError: text('extraction_error'),
+  extractedAt: timestamp('extracted_at'),
+  indexedAt: timestamp('indexed_at'),
+  contentHash: text('content_hash'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -191,6 +207,15 @@ export const importJobs = pgTable('import_jobs', {
 export const articleEmbeddings = pgTable('article_embeddings', {
   id: uuid('id').primaryKey().defaultRandom(),
   articleId: uuid('article_id').notNull().references(() => articles.id, { onDelete: 'cascade' }),
+  chunkIndex: integer('chunk_index').notNull(),
+  chunkText: text('chunk_text').notNull(),
+  embedding: vector('embedding', { dimensions: 1536 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const attachmentEmbeddings = pgTable('attachment_embeddings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  attachmentId: uuid('attachment_id').notNull().references(() => attachments.id, { onDelete: 'cascade' }),
   chunkIndex: integer('chunk_index').notNull(),
   chunkText: text('chunk_text').notNull(),
   embedding: vector('embedding', { dimensions: 1536 }),
@@ -228,6 +253,7 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 export const articlesRelations = relations(articles, ({ one, many }) => ({
   category: one(categories, { fields: [articles.categoryId], references: [categories.id] }),
   author: one(users, { fields: [articles.authorId], references: [users.id] }),
+  lastEditor: one(users, { fields: [articles.lastEditedById], references: [users.id] }),
   versions: many(articleVersions),
   articleTags: many(articleTags),
   embeddings: many(articleEmbeddings),
@@ -236,6 +262,10 @@ export const articlesRelations = relations(articles, ({ one, many }) => ({
 
 export const attachmentsRelations = relations(attachments, ({ one }) => ({
   article: one(articles, { fields: [attachments.articleId], references: [articles.id] }),
+}));
+
+export const attachmentEmbeddingsRelations = relations(attachmentEmbeddings, ({ one }) => ({
+  attachment: one(attachments, { fields: [attachmentEmbeddings.attachmentId], references: [attachments.id] }),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
