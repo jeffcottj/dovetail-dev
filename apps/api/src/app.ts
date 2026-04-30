@@ -3,6 +3,7 @@ import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import { checkDatabaseConnection } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from './middleware/auth.js';
 
 export const app: ReturnType<typeof express> = express();
@@ -18,6 +19,14 @@ app.use(cookieParser());
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.get('/ready', async (_req, res) => {
+  const database = await checkDatabaseConnection();
+  res.status(database ? 200 : 503).json({
+    status: database ? 'ok' : 'unavailable',
+    checks: { database },
+  });
 });
 
 app.get('/api/me', authMiddleware, (req: AuthRequest, res) => {

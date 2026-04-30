@@ -23,3 +23,12 @@ const ssl = parseSslOption(connectionString, process.env.DB_SSL);
 
 export const client = postgres(connectionString, { ssl });
 export const db = drizzle(client, { schema });
+
+export async function checkDatabaseConnection(): Promise<boolean> {
+  try {
+    await client`select 1`;
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -1,2 +1,2 @@
-export { db } from './connection.js';
+export { checkDatabaseConnection, db } from './connection.js';
 export * from './schema.js';
