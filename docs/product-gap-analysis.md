@@ -291,7 +291,7 @@ Required features:
 - Document mounting the Postgres data volume on a separate Azure data disk.
 - Avoid exposing the database port publicly in production compose.
 - Ensure uploaded files/attachments live on a persistent mounted volume included in backups.
-- Add deployment docs specifically for Azure VM + Docker Compose + Caddy, distinct from Azure Container Apps.
+- Maintain deployment docs specifically for VM + Docker Compose + Caddy.
 
 ### 15. Backup And Restore Automation
 
@@ -364,4 +364,3 @@ This is not a product roadmap; it is the dependency order that reduces rework.
 10. Add RAG support endpoints needed by MCP.
 11. Build the MCP server and LibreChat docs.
 12. Finish Azure VM Compose/Caddy deployment, backup scripts, and health checks.
-

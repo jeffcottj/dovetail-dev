@@ -1,12 +1,10 @@
-# Azure VM Deployment Guide
+# Docker Compose VM Deployment Guide
 
-This guide deploys Dovetail on one Azure VM with Docker Compose, Caddy, PostgreSQL with pgvector, the API, the web app, and the MCP server.
-
-For Azure Container Apps, see `infra/README.md`.
+This guide deploys Dovetail on one Linux VM with Docker Compose, Caddy, PostgreSQL with pgvector, the API, the web app, persistent uploads storage, and the MCP server.
 
 ## Prerequisites
 
-- Ubuntu 22.04 or newer VM.
+- Ubuntu 22.04 or newer Linux VM.
 - A data disk mounted outside the OS disk, for example `/srv/dovetail`.
 - DNS record for the public app host, for example `dovetail.example.com`.
 - Docker Engine with the Docker Compose plugin.
@@ -57,7 +55,7 @@ NEXTAUTH_SECRET=<openssl-rand-base64-32>
 AUTH_TRUST_HOST=true
 DEV_AUTH_ENABLED=false
 
-OAUTH_PROVIDER=microsoft-entra-id
+OAUTH_PROVIDER=entra
 ENTRA_CLIENT_ID=<client-id>
 ENTRA_TENANT_ID=<tenant-id>
 ENTRA_CLIENT_SECRET=<client-secret>
@@ -87,7 +85,7 @@ Use the real value of `DOVETAIL_DOMAIN`.
 
 ## First Start
 
-The VM Compose file is production-oriented. It exposes only Caddy on ports `80` and `443`; Postgres, API, web, and MCP stay on the internal Docker network.
+The VM Compose file is production-oriented. It starts `postgres`, `api`, `web`, `mcp`, and `caddy`. Only Caddy is exposed on ports `80` and `443`; Postgres, API, web, and MCP stay on the internal Docker network.
 
 ```sh
 docker compose --env-file .env.production -f docker-compose.vm.yml up --build -d

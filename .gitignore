@@ -12,10 +12,3 @@ apps/api/uploads/
 test-export.zip
 .codex/
 .pnpm-store/
-
-
-# Azure deployment secrets (local parameter overrides — contain passwords/keys)
-infra/*.local.bicepparam
-
-# Bicep compiled ARM templates (generated artifacts)
-infra/**/*.json

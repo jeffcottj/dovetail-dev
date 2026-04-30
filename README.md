@@ -21,11 +21,11 @@ Legal aid staff spend time hunting for answers that someone in the organization 
 
 ## Getting Started
 
-Dovetail runs as three Docker containers — a web app, an API server, and a PostgreSQL database. A single `docker compose` command starts everything.
+Dovetail runs in Docker: the web app, API server, MCP server, PostgreSQL with pgvector, and persistent uploads storage. A production VM deployment also includes Caddy for HTTPS.
 
 ### Prerequisites
 
-- A Linux server (or VM) with [Docker](https://docs.docker.com/engine/install/) installed
+- A Linux server, VM, or local machine with [Docker](https://docs.docker.com/engine/install/) installed
 - A Google or Microsoft OAuth application for login ([setup instructions](docs/explainers/deployment-guide.md#oauth-setup))
 - Optionally, an [OpenAI API key](https://platform.openai.com/api-keys) for semantic search
 
@@ -39,7 +39,9 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Then visit `http://your-server:3000`, sign in, and promote yourself to admin:
+The default Compose file exposes the web app on `http://localhost:3000` and the API on `http://localhost:3001`. For production, use the [Docker Compose VM deployment guide](docs/explainers/deployment-guide.md), which adds Caddy, HTTPS, backups, and restore steps.
+
+After first sign-in, promote yourself to admin:
 
 ```bash
 docker compose exec postgres psql -U dovetail -d dovetail -c \
@@ -63,30 +65,29 @@ Copy `.env.example` to `.env` and fill in these values:
 | `ENTRA_CLIENT_ID` / `SECRET` / `TENANT_ID` | From Azure Portal (if using Microsoft) |
 | `OPENAI_API_KEY` | For semantic search (optional) |
 
-See the [full deployment guide](docs/explainers/deployment-guide.md) for detailed instructions, HTTPS setup, backups, and troubleshooting.
+See the [full deployment guide](docs/explainers/deployment-guide.md) for production setup, HTTPS, backups, restore, updates, and troubleshooting.
 
 ## Deployment
 
-Dovetail supports two deployment paths:
-
-- **[Docker Compose on a VM](docs/explainers/deployment-guide.md)** — simplest option; everything runs in Docker on a single Linux server. Good for small teams or on-premise hosting.
-- **[Azure Container Apps](infra/README.md)** — managed containers on Azure with a managed PostgreSQL database. Automatic HTTPS, scaling, and backups.
-
-Both paths use the same Docker images. The "Getting Started" section above covers the Docker Compose quick start.
+Dovetail’s supported production deployment path is **[Docker Compose on a Linux VM](docs/explainers/deployment-guide.md)**. The production Compose file runs Postgres, API, web, MCP, and Caddy on one host, stores database and uploaded attachment data in Docker volumes, and includes backup/restore scripts.
 
 ## How It Works
 
 ```
-Browser  ──►  Web App (:3000)  ──►  API Server (:3001)  ──►  PostgreSQL
-                    │
-                    └── Google / Microsoft sign-in
+Browser  ──►  Caddy (:443)  ──►  Web App (:3000)  ──►  API Server (:3001)  ──►  PostgreSQL
+                                      │                         │
+                                      │                         ├── uploads volume
+                                      │                         └── MCP server (:3002)
+                                      └── Google / Microsoft sign-in
 ```
 
 - The **web app** is what your team sees — article pages, the editor, search, and the admin panel.
 - The **API server** handles all data operations — creating articles, running searches, managing users, and serving the RAG endpoint.
+- The **MCP server** lets compatible tools query Dovetail through scoped API keys.
 - **PostgreSQL** stores everything: articles, user accounts, version history, search indexes, and embeddings.
+- The **uploads volume** stores attachment files imported or uploaded through the app.
 
-All three run in Docker. In production, you should put a reverse proxy (like [Caddy](https://caddyserver.com/)) in front to handle HTTPS — the [deployment guide](docs/explainers/deployment-guide.md#step-5-set-up-https-strongly-recommended) explains how.
+The production Compose file includes [Caddy](https://caddyserver.com/) so only HTTPS is exposed publicly.
 
 ## For Developers
 
@@ -140,21 +141,11 @@ Migrations run automatically when the API container starts in production — no 
 
 ## Documentation
 
-The `docs/explainers/` folder contains plain-language writeups of each development phase:
-
-- [Deployment Guide](docs/explainers/deployment-guide.md) — step-by-step first-time setup
-- [Local Development And Debugging Guide](docs/explainers/local-dev-debugging.md) — practical day-to-day local setup, reset, logs, and smoke workflow
-- [Phase 1: Scaffold](docs/explainers/phase1.md) — project setup
-- [Phase 2: Database Schema](docs/explainers/phase2.md) — data model
-- [Phase 3: Authentication](docs/explainers/phase3.md) — OAuth login
-- [Phase 3.9: Build Fix](docs/explainers/phase3.9.md) — monorepo build issues
-- [Phase 4: Authorization](docs/explainers/phase4.md) — roles and permissions
-- [Phase 5: Core API](docs/explainers/phase5.md) — articles, categories, versions
-- [Phase 6: Frontend](docs/explainers/phase6.md) — web interface
-- [Phase 7: Search](docs/explainers/phase7.md) — full-text search
-- [Phase 8: Semantic Search](docs/explainers/phase8.md) — embeddings and hybrid search
-- [Phase 9: RAG API](docs/explainers/phase9.md) — AI integration endpoint
-- [Phase 10: Polish & Production](docs/explainers/phase10.md) — tags, admin UI, Docker builds
+- [Deployment Guide](docs/explainers/deployment-guide.md) — production Docker Compose VM setup, HTTPS, backups, restore, and updates
+- [MCP Integration](docs/integrations/mcp.md) — MCP server setup and tool surface
+- [LibreChat Integration](docs/integrations/librechat.md) — using Dovetail from LibreChat
+- [RAG API](docs/integrations/rag-api.md) — API key based RAG endpoints
+- [Product Requirements](docs/product-requirements.md) — product scope and expected behavior
 
 ## License
 
