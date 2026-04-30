@@ -57,17 +57,29 @@ const marks = basicSchema.spec.marks.append({
 
 const tiptapSchema = new Schema({ nodes: withTables, marks });
 
+export interface HtmlToTiptapOptions {
+  rewriteHref?: (href: string) => string;
+}
+
 /**
  * Convert an HTML string to TipTap-compatible JSON.
  * Uses ProseMirror's DOMParser with linkedom for server-side DOM.
  */
-export function htmlToTiptap(html: string): any {
+export function htmlToTiptap(html: string, options: HtmlToTiptapOptions = {}): any {
   if (!html.trim()) {
     return { type: 'doc', content: [] };
   }
 
   const { document } = parseHTML(`<!DOCTYPE html><html><body>${html}</body></html>`);
   const body = document.querySelector('body')!;
+  if (options.rewriteHref) {
+    for (const link of Array.from(body.querySelectorAll('a[href]'))) {
+      const href = link.getAttribute('href');
+      if (href) {
+        link.setAttribute('href', options.rewriteHref(href));
+      }
+    }
+  }
   const doc = ProseDOMParser.fromSchema(tiptapSchema).parse(body);
   return docToJSON(doc);
 }

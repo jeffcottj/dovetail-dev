@@ -85,7 +85,7 @@ describe('Import integration (sample data)', () => {
     const articles = parseDataJson(json);
     const tree = buildCategoryTree(articles);
 
-    // Find all occurrences of "Baltimore City" in the tree with their parent paths
+    // Find all occurrences of a repeated category name in the tree with their parent paths
     function findByName(nodes: CategoryNode[], name: string, parentPath = ''): string[] {
       const paths: string[] = [];
       for (const node of nodes) {
@@ -95,9 +95,9 @@ describe('Import integration (sample data)', () => {
       return paths;
     }
 
-    const bcPaths = findByName(tree, 'Baltimore City');
-    // "Baltimore City" appears multiple times but always under different parents
-    expect(bcPaths.length).toBeGreaterThan(1);
-    expect(new Set(bcPaths).size).toBe(bcPaths.length); // all unique parent paths
+    const paths = findByName(tree, 'Landlord/Tenant');
+    // "Landlord/Tenant" appears multiple times but always under different parents
+    expect(paths.length).toBeGreaterThan(1);
+    expect(new Set(paths).size).toBe(paths.length); // all unique parent paths
   });
 });

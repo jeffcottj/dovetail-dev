@@ -5,10 +5,12 @@ import { eq, and, sql } from 'drizzle-orm';
 import { db, categories, articles, attachments, importJobs, tags, articleTags } from '@dovetail/db';
 import { toSlug } from '../../utils/slug.js';
 import { extractText } from '../../utils/tiptap.js';
+import { buildCategoryPath } from '../../utils/category-path.js';
 import { getUploadsDir, ensureDir, copyFile } from '../../utils/storage.js';
 import { parseDataJson, buildCategoryTree, type FlowluArticle } from './flowlu-parser.js';
 import { extractArticleBody, extractDateModified } from './html-extractor.js';
 import { htmlToTiptap } from './html-to-tiptap.js';
+import { createFlowluArticleHrefRewriter } from './flowlu-links.js';
 import { enqueueAttachmentIndexing } from '../attachment-indexing.js';
 import { generateEmbeddings } from '../embedding-pipeline.js';
 import mime from 'mime-types';
@@ -24,6 +26,7 @@ export interface ImportEngineOptions {
   defaultStatus: 'draft' | 'published';
   jobId: string;
   knowledgeBaseId: string;
+  knowledgeBaseSlug: string;
 }
 
 export class ImportEngine {
@@ -74,11 +77,13 @@ export class ImportEngine {
 
       // 2. Create categories (depth-first, deduplicating against existing)
       const categoryMap = await this.createCategories(tree);
+      const articleUrlBySourceId = await this.buildArticleUrlBySourceId(flowluArticles, categoryMap);
+      const rewriteHref = createFlowluArticleHrefRewriter(articleUrlBySourceId);
 
       // 3. Import articles
       for (const art of flowluArticles) {
         try {
-          await this.importArticle(art, categoryMap);
+          await this.importArticle(art, categoryMap, rewriteHref);
           this.importedCount++;
           this.emit({ type: 'progress', imported: this.importedCount, total: flowluArticles.length, current: art.title });
 
@@ -167,6 +172,46 @@ export class ImportEngine {
     return map;
   }
 
+  private categoryIdForArticle(art: FlowluArticle, categoryMap: Map<string, string>): string | undefined {
+    if (art.parentChain.length > 0) {
+      const immediateParent = art.parentChain[art.parentChain.length - 1];
+      return categoryMap.get(immediateParent);
+    }
+    if (categoryMap.has(art.id)) {
+      return categoryMap.get(art.id);
+    }
+    return undefined;
+  }
+
+  private async buildArticleUrlBySourceId(
+    flowluArticles: FlowluArticle[],
+    categoryMap: Map<string, string>,
+  ): Promise<Map<string, string>> {
+    const articleUrlBySourceId = new Map<string, string>();
+    const categoryPathById = new Map<string, string[]>();
+
+    for (const art of flowluArticles) {
+      const categoryId = this.categoryIdForArticle(art, categoryMap);
+      if (!categoryId) {
+        continue;
+      }
+
+      let categoryPath = categoryPathById.get(categoryId);
+      if (!categoryPath) {
+        categoryPath = await buildCategoryPath(categoryId);
+        categoryPathById.set(categoryId, categoryPath);
+      }
+
+      const articleSlug = art.slug || toSlug(art.title);
+      articleUrlBySourceId.set(
+        art.id,
+        `/kb/${this.opts.knowledgeBaseSlug}/articles/${[...categoryPath, articleSlug].join('/')}`,
+      );
+    }
+
+    return articleUrlBySourceId;
+  }
+
   private normalizedTagNames(tagNames: string[]): string[] {
     const seen = new Set<string>();
     const normalized: string[] = [];
@@ -239,16 +284,13 @@ export class ImportEngine {
   /**
    * Import a single article: parse HTML, convert to TipTap, insert, copy attachments.
    */
-  private async importArticle(art: FlowluArticle, categoryMap: Map<string, string>): Promise<void> {
+  private async importArticle(
+    art: FlowluArticle,
+    categoryMap: Map<string, string>,
+    rewriteHref: (href: string) => string,
+  ): Promise<void> {
     // Determine category: use immediate parent if exists, otherwise find the top-level ancestor
-    let categoryId: string | undefined;
-    if (art.parentChain.length > 0) {
-      const immediateParent = art.parentChain[art.parentChain.length - 1];
-      categoryId = categoryMap.get(immediateParent);
-    } else if (categoryMap.has(art.id)) {
-      // This article IS a top-level category — place it in its own category
-      categoryId = categoryMap.get(art.id);
-    }
+    const categoryId = this.categoryIdForArticle(art, categoryMap);
 
     if (!categoryId) {
       throw new Error(`No category found for article "${art.title}" (code: ${art.code})`);
@@ -262,7 +304,7 @@ export class ImportEngine {
       const html = await fs.readFile(htmlPath, 'utf-8');
       const bodyHtml = extractArticleBody(html);
       if (bodyHtml) {
-        content = htmlToTiptap(bodyHtml);
+        content = htmlToTiptap(bodyHtml, { rewriteHref });
       }
       dateModified = extractDateModified(html);
     } catch { /* no HTML file — use empty content */ }

@@ -35,6 +35,17 @@ describe('htmlToTiptap', () => {
     );
   });
 
+  it('rewrites link hrefs before conversion when requested', () => {
+    const result = htmlToTiptap('<p><a href="../../articles/1--source/">click</a></p>', {
+      rewriteHref: (href) => href === '../../articles/1--source/' ? '/kb/default/articles/source' : href,
+    });
+
+    const link = result.content[0].content[0];
+    expect(link.marks).toContainEqual(
+      expect.objectContaining({ type: 'link', attrs: expect.objectContaining({ href: '/kb/default/articles/source' }) }),
+    );
+  });
+
   it('converts unordered lists', () => {
     const result = htmlToTiptap('<ul><li>one</li><li>two</li></ul>');
     expect(result.content[0].type).toBe('bulletList');

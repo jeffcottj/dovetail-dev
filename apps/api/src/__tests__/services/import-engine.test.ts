@@ -62,6 +62,7 @@ describe('ImportEngine', () => {
       defaultStatus: 'draft',
       jobId: 'job-1',
       knowledgeBaseId: 'kb-1',
+      knowledgeBaseSlug: 'test-kb',
     });
     expect(engine).toBeDefined();
   });
@@ -83,7 +84,14 @@ describe('ImportEngine', () => {
     mockedReadFile.mockImplementation(async (filePath: any) => {
       if (String(filePath).endsWith('data.json')) return fakeDataJson;
       if (String(filePath).endsWith('index.html')) {
-        return '<html><body><main><p>marigold import remedy</p></main></body></html>';
+        return `
+          <html><body>
+            <div itemprop="articleBody">
+              <p>See <a href="../../articles/100-101--test-article/#section">Test Article</a>
+              and <a href="https://example.com/articles/123">public article</a>.</p>
+            </div>
+          </body></html>
+        `;
       }
       return 'attachment text';
     });
@@ -98,6 +106,7 @@ describe('ImportEngine', () => {
 
     const mockedDb = vi.mocked(db);
     (mockedDb.update as any).mockReturnValue(chainMock());
+    (mockedDb.execute as any).mockResolvedValue([{ slug: 'test-category', depth: 0 }]);
 
     let selectCallCount = 0;
     (mockedDb.select as any).mockImplementation(() => {
@@ -126,6 +135,7 @@ describe('ImportEngine', () => {
       defaultStatus: 'draft',
       jobId: 'job-1',
       knowledgeBaseId: 'kb-1',
+      knowledgeBaseSlug: 'test-kb',
     });
 
     const events: any[] = [];
@@ -144,6 +154,12 @@ describe('ImportEngine', () => {
     expect(valuesCalls).toContainEqual({ articleId: 'article-101', tagId: 'tag-existing' });
     expect(valuesCalls).toContainEqual({ name: 'Other Tag', slug: 'other-tag', knowledgeBaseId: 'kb-1' });
     expect(valuesCalls).toContainEqual({ articleId: 'article-101', tagId: 'insert-5' });
+
+    const importedArticle = valuesCalls.find((call: any) => call?.title === 'Test Article');
+    expect(importedArticle.content.content[0].content[1].marks[0].attrs.href)
+      .toBe('/kb/test-kb/articles/test-category/test-article#section');
+    expect(importedArticle.content.content[0].content[3].marks[0].attrs.href)
+      .toBe('https://example.com/articles/123');
   });
 
   it('skips duplicate articles without creating tags or indexing work for skipped articles', async () => {
@@ -161,6 +177,7 @@ describe('ImportEngine', () => {
 
     const mockedDb = vi.mocked(db);
     (mockedDb.update as any).mockReturnValue(chainMock());
+    (mockedDb.execute as any).mockResolvedValue([{ slug: 'test-category', depth: 0 }]);
 
     let selectCallCount = 0;
     (mockedDb.select as any).mockImplementation(() => {
@@ -182,6 +199,7 @@ describe('ImportEngine', () => {
       defaultStatus: 'draft',
       jobId: 'job-1',
       knowledgeBaseId: 'kb-1',
+      knowledgeBaseSlug: 'test-kb',
     });
 
     const events: any[] = [];

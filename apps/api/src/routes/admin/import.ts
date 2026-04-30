@@ -173,6 +173,7 @@ importRouter.post(
       defaultStatus: options.defaultStatus,
       jobId: job.id,
       knowledgeBaseId: kbId,
+      knowledgeBaseSlug: (req as AuthRequest & { kb: { slug: string } }).kb.slug,
     });
 
     // Wire up SSE listeners
