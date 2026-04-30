@@ -87,7 +87,7 @@ The request can use `articleId` instead of `query` to find articles related to a
 
 ## MCP Notes
 
-The MCP server should map these endpoints to read-only tools:
+These endpoints are surfaced to MCP-capable clients (such as LibreChat) by the Dovetail MCP server (`apps/mcp`), which maps them to six read-only tools:
 
 - `list_knowledge_bases`
 - `list_categories`
@@ -96,4 +96,4 @@ The MCP server should map these endpoints to read-only tools:
 - `get_article_citations`
 - `suggest_related_articles`
 
-MCP service packaging, Docker Compose wiring, and LibreChat MCP configuration are handled in step 11.
+For MCP server configuration and operational notes, see [`docs/integrations/mcp.md`](./mcp.md). For end-to-end LibreChat setup, see [`docs/integrations/librechat.md`](./librechat.md). The REST endpoints documented above remain supported for legacy clients that do not speak MCP.
