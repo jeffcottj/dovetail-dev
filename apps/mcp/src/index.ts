@@ -1,5 +1,11 @@
+import { config as loadDotenv } from 'dotenv';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig, redactKey } from './config.js';
 import { createApp } from './app.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+loadDotenv({ path: resolve(__dirname, '../../../.env'), quiet: true });
 
 async function main() {
   let config;
