@@ -55,6 +55,10 @@ function getAllowedKbIds(req: ApiKeyRequest) {
   return req.allowedKbIds ?? [];
 }
 
+function uuidArray(values: string[]) {
+  return sql`ARRAY[${sql.join(values.map((value) => sql`${value}`), sql`, `)}]::uuid[]`;
+}
+
 function isAllowedKb(req: ApiKeyRequest, knowledgeBaseId: string) {
   return getAllowedKbIds(req).includes(knowledgeBaseId);
 }
@@ -182,7 +186,7 @@ async function loadPublishedArticleForApiKey(articleId: string, allowedKbIds: st
     LEFT JOIN users u ON u.id = a.last_edited_by_id
     WHERE a.id = ${articleId}
       AND a.status = 'published'
-      AND kb.id = ANY(${allowedKbIds}::uuid[])
+      AND kb.id = ANY(${uuidArray(allowedKbIds)})
     LIMIT 1
   `) as any[];
 
@@ -200,7 +204,7 @@ async function resolveAllowedKnowledgeBaseIdBySlug(req: ApiKeyRequest, slug: str
     SELECT id
     FROM knowledge_bases
     WHERE slug = ${slug}
-      AND id = ANY(${allowedKbIds}::uuid[])
+      AND id = ANY(${uuidArray(allowedKbIds)})
     LIMIT 1
   `) as Array<{ id: string }>;
 
@@ -218,7 +222,7 @@ async function runRagVectorSearch(args: {
   const queryEmbedding = await provider.embed(args.query);
   const vectorLiteral = `[${queryEmbedding.join(',')}]`;
   const categoryFilter = args.categoryIds?.length
-    ? sql`AND a.category_id = ANY(${args.categoryIds}::uuid[])`
+    ? sql`AND a.category_id = ANY(${uuidArray(args.categoryIds)})`
     : sql``;
   const excludeFilter = args.excludeArticleId
     ? sql`AND a.id <> ${args.excludeArticleId}`
@@ -242,7 +246,7 @@ async function runRagVectorSearch(args: {
       JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
       LEFT JOIN users u ON u.id = a.last_edited_by_id
       WHERE a.status = 'published'
-        AND kb.id = ANY(${args.knowledgeBaseIds}::uuid[])
+        AND kb.id = ANY(${uuidArray(args.knowledgeBaseIds)})
         ${categoryFilter}
         ${excludeFilter}
       UNION ALL
@@ -262,7 +266,7 @@ async function runRagVectorSearch(args: {
       JOIN knowledge_bases kb ON kb.id = c.knowledge_base_id
       LEFT JOIN users u ON u.id = a.last_edited_by_id
       WHERE a.status = 'published'
-        AND kb.id = ANY(${args.knowledgeBaseIds}::uuid[])
+        AND kb.id = ANY(${uuidArray(args.knowledgeBaseIds)})
         ${categoryFilter}
         ${excludeFilter}
     ) results
@@ -281,7 +285,7 @@ ragRouter.get('/knowledge-bases', apiKeyAuth, async (req: ApiKeyRequest, res) =>
   const rows = await db.execute(sql`
     SELECT id, name, slug, description, created_at AS "createdAt"
     FROM knowledge_bases
-    WHERE id = ANY(${allowedKbIds}::uuid[])
+    WHERE id = ANY(${uuidArray(allowedKbIds)})
     ORDER BY name ASC
   `);
 
