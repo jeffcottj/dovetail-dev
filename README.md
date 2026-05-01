@@ -1,4 +1,4 @@
-<img width="330" height="80" alt="with-text" src="https://github.com/user-attachments/assets/a335c4f2-272e-4cd3-a1e1-60dfcf711f19" />
+<p align="center"><img width="160" height="160" alt="dovetail_icon" src="https://github.com/user-attachments/assets/af666b3a-03e1-4e50-a772-e87fdf65f6f7" /></p>
 
 # Dovetail
 
