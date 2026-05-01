@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiClientFetch } from '../lib/api-client';
 import { FileDropzone } from './FileDropzone';
 import { CategoryTreePreview } from './CategoryTreePreview';
@@ -31,6 +31,13 @@ interface ProgressEvent {
   errors?: number;
 }
 
+interface ImportJob {
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  totalArticles: number;
+  importedCount: number;
+  errorLog: { article_title?: string; error_message?: string }[];
+}
+
 export default function ImportWizard({ kbId, onImportComplete }: { kbId?: string; onImportComplete?: () => void }) {
   const apiPrefix = kbId ? `/api/knowledge-bases/${kbId}` : '/api';
   const [step, setStep] = useState<Step>('upload');
@@ -40,8 +47,33 @@ export default function ImportWizard({ kbId, onImportComplete }: { kbId?: string
   const [progress, setProgress] = useState<{ imported: number; total: number; current: string }>({ imported: 0, total: 0, current: '' });
   const [errors, setErrors] = useState<{ article: string; message: string }[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [importFailed, setImportFailed] = useState(false);
   const toast = useToast();
   const eventSourceRef = useRef<EventSource | null>(null);
+  const completionHandledRef = useRef(false);
+
+  const finishImport = useCallback((next: {
+    imported: number;
+    total?: number;
+    errors?: { article: string; message: string }[];
+    failed?: boolean;
+  }) => {
+    if (completionHandledRef.current) return;
+    completionHandledRef.current = true;
+    setImportFailed(Boolean(next.failed));
+    setProgress((prev) => ({
+      ...prev,
+      imported: next.imported,
+      total: next.total ?? prev.total,
+      current: '',
+    }));
+    if (next.errors) {
+      setErrors(next.errors);
+    }
+    setStep('complete');
+    onImportComplete?.();
+    eventSourceRef.current?.close();
+  }, [onImportComplete]);
 
   const handleFileSelected = async (file: File) => {
     setLoading(true);
@@ -82,12 +114,15 @@ export default function ImportWizard({ kbId, onImportComplete }: { kbId?: string
           options: { defaultStatus },
         }),
       });
+      completionHandledRef.current = false;
+      setImportFailed(false);
+      setErrors([]);
       setJobId(res.jobId);
       setStep('importing');
       setProgress({ imported: 0, total: preview.summary.articleCount, current: '' });
 
       // Connect SSE
-      const es = new EventSource(`${apiPrefix}/admin/import/${res.jobId}/progress`);
+      const es = new EventSource(`${apiPrefix}/admin/import/${res.jobId}/progress`, { withCredentials: true });
       eventSourceRef.current = es;
 
       es.onmessage = (event) => {
@@ -97,16 +132,12 @@ export default function ImportWizard({ kbId, onImportComplete }: { kbId?: string
         } else if (data.type === 'error') {
           setErrors((prev) => [...prev, { article: data.article!, message: data.message! }]);
         } else if (data.type === 'complete') {
-          setProgress((prev) => ({ ...prev, imported: data.imported! }));
-          setStep('complete');
-          onImportComplete?.();
-          es.close();
+          finishImport({ imported: data.imported! });
         }
       };
 
       es.onerror = () => {
         es.close();
-        toast.error('Lost connection to import progress stream');
       };
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to start import');
@@ -136,6 +167,52 @@ export default function ImportWizard({ kbId, onImportComplete }: { kbId?: string
       eventSourceRef.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (step !== 'importing' || !jobId) return;
+
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    async function pollJob() {
+      try {
+        const job = await apiClientFetch<ImportJob>(`${apiPrefix}/admin/import/${jobId}`);
+        if (cancelled) return;
+
+        setProgress((prev) => ({
+          ...prev,
+          imported: job.importedCount,
+          total: job.totalArticles || prev.total,
+        }));
+
+        if (job.status === 'completed' || job.status === 'failed') {
+          const jobErrors = Array.isArray(job.errorLog)
+            ? job.errorLog.map((entry) => ({
+              article: entry.article_title ?? 'Import',
+              message: entry.error_message ?? 'Unknown error',
+            }))
+            : [];
+          finishImport({
+            imported: job.importedCount,
+            total: job.totalArticles || undefined,
+            errors: jobErrors,
+            failed: job.status === 'failed',
+          });
+          if (interval) clearInterval(interval);
+        }
+      } catch {
+        // SSE may still be active; keep polling on the next tick.
+      }
+    }
+
+    void pollJob();
+    interval = setInterval(() => void pollJob(), 1500);
+
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, [apiPrefix, finishImport, jobId, step]);
 
   return (
     <div className="space-y-6">
@@ -251,22 +328,31 @@ export default function ImportWizard({ kbId, onImportComplete }: { kbId?: string
       {/* Step 4: Complete */}
       {step === 'complete' && (
         <Card>
-          <h2 className="text-lg font-[family-name:var(--font-display)] text-ink mb-4">Import Complete</h2>
+          <h2 className="text-lg font-[family-name:var(--font-display)] text-ink mb-4">
+            {importFailed ? 'Import Failed' : 'Import Complete'}
+          </h2>
           <p className="text-sm text-ink font-[family-name:var(--font-ui)] mb-2">
-            Successfully imported {progress.imported} articles.
+            Imported {progress.imported} / {progress.total} articles.
           </p>
           {errors.length > 0 && (
-            <p className="text-sm text-danger font-[family-name:var(--font-ui)] mb-4">
-              {errors.length} articles had errors.
-            </p>
+            <div className="mb-4">
+              <p className="text-sm text-danger font-[family-name:var(--font-ui)] mb-2">
+                {errors.length} {errors.length === 1 ? 'article had' : 'articles had'} errors.
+              </p>
+              <ul className="max-h-36 space-y-1 overflow-y-auto text-xs text-ink-muted">
+                {errors.map((e, i) => (
+                  <li key={i}><span className="font-medium text-ink">{e.article}:</span> {e.message}</li>
+                ))}
+              </ul>
+            </div>
           )}
           <div className="flex gap-3">
-            {defaultStatus === 'draft' && (
+            {!importFailed && defaultStatus === 'draft' && (
               <Button onClick={handleBulkPublish} loading={loading}>
                 Publish All
               </Button>
             )}
-            <Button variant="secondary" onClick={() => { setStep('upload'); setPreview(null); setErrors([]); }}>
+            <Button variant="secondary" onClick={() => { setStep('upload'); setPreview(null); setErrors([]); setImportFailed(false); }}>
               Import Another
             </Button>
           </div>

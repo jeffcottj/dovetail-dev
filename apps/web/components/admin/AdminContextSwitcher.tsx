@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { KnowledgeBase } from '@dovetail/types';
@@ -22,11 +22,34 @@ export function AdminContextSwitcher({
   const [open, setOpen] = useState(false);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
 
-  useEffect(() => {
-    apiClientFetch<KnowledgeBase[]>('/api/knowledge-bases')
-      .then((kbs) => setKnowledgeBases([...kbs].sort((a, b) => a.name.localeCompare(b.name))))
-      .catch(() => {});
+  const loadKnowledgeBases = useCallback(async () => {
+    try {
+      const kbs = await apiClientFetch<KnowledgeBase[]>('/api/knowledge-bases');
+      setKnowledgeBases([...kbs].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch {
+      // Keep the current list if the API is unavailable.
+    }
   }, []);
+
+  useEffect(() => {
+    void loadKnowledgeBases();
+  }, [loadKnowledgeBases]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadKnowledgeBases();
+  }, [loadKnowledgeBases, open]);
+
+  useEffect(() => {
+    function handleKnowledgeBasesChanged() {
+      void loadKnowledgeBases();
+    }
+
+    window.addEventListener('dovetail:knowledge-bases-changed', handleKnowledgeBasesChanged);
+    return () => {
+      window.removeEventListener('dovetail:knowledge-bases-changed', handleKnowledgeBasesChanged);
+    };
+  }, [loadKnowledgeBases]);
 
   useEffect(() => {
     if (!open) return;

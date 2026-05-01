@@ -71,6 +71,13 @@
       "when": 1777597200000,
       "tag": "0009_add_attachment_extraction_indexing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777636800000,
+      "tag": "0010_drop_global_tag_uniques",
+      "breakpoints": true
     }
   ]
 }

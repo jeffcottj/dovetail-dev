@@ -3,10 +3,11 @@
 ## Project Overview
 
 - Dovetail is a TypeScript monorepo for a legal knowledge base.
-- The full Docker stack has three services: `postgres`, `api`, and `web`.
+- The full Docker stack has four services: `postgres`, `api`, `web`, and `mcp`.
 - The default local debugging workflow is hybrid: run `postgres` in Docker and run the app processes locally with watch mode.
 - The frontend lives in `apps/web` and uses Next.js 15 App Router with React 19.
 - The backend lives in `apps/api` and uses Express 5.
+- The MCP server lives in `apps/mcp` and exposes read-only Model Context Protocol tools over Streamable HTTP.
 - The ORM and schema layer lives in `packages/db` and uses Drizzle.
 - Shared types live in `packages/types`.
 - Local development expects Node 20+, pnpm 9+, and `just`.
@@ -38,6 +39,14 @@
 - Database changes should be handled through the Drizzle workflow already used in `packages/db`.
 - When you need container-level behavior rather than the faster hybrid loop, use `just stack` or `just stack-logs`.
 - When debugging cross-service issues, verify whether the failure is in `web`, `api`, database access, or service-to-service configuration before editing code.
+
+## MCP Guidance
+
+- The MCP server is a thin adapter over the API-key-authenticated `/api/v1/rag/*` endpoints. It should not query Postgres directly or import `@dovetail/db`.
+- MCP authorization is defined by `MCP_API_KEY`, which is a Dovetail API key scoped to knowledge bases in the admin UI. Do not add a separate MCP-specific permission model unless the product requirements change.
+- The local MCP process expects a running API plus `MCP_API_BASE_URL`, `MCP_API_KEY`, `MCP_PORT`, and `MCP_REQUEST_TIMEOUT_MS` from `.env` or the shell. See `docs/integrations/mcp.md` for the current tool surface and transport details.
+- Use `just mcp-dev` to run `apps/mcp` locally, `just mcp-up` to run only the Compose MCP service, and `just logs-mcp` for MCP container logs.
+- For MCP changes, prefer targeted validation such as `pnpm --filter @dovetail/mcp test`, `/health` or `/health?deep=1`, and one representative tool call through an MCP-capable client or test harness.
 
 ## Expectations For Codex
 

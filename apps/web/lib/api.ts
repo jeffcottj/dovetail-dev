@@ -7,6 +7,7 @@ export async function apiFetch<T = unknown>(path: string, init?: RequestInit): P
   const token = cookieStore.get('authjs.session-token')?.value;
 
   const res = await fetch(`${API_URL}${path}`, {
+    cache: 'no-store',
     ...init,
     headers: {
       ...init?.headers,

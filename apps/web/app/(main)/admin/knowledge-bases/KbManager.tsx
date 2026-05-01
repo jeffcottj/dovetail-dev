@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClientFetch } from '../../../../lib/api-client';
 import { useToast } from '../../../../lib/hooks/useToast';
@@ -36,6 +36,14 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
   const [editLoading, setEditLoading] = useState(false);
   const { success, error } = useToast();
 
+  useEffect(() => {
+    setKbs(initialKbs);
+  }, [initialKbs]);
+
+  function notifyKnowledgeBasesChanged() {
+    window.dispatchEvent(new Event('dovetail:knowledge-bases-changed'));
+  }
+
   async function handleCreate() {
     setLoading(true);
     await runAdminMutation({
@@ -50,6 +58,7 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
         setName('');
         setDescription('');
         setDefaultAccess('org_viewer');
+        notifyKnowledgeBasesChanged();
         success('Knowledge base created');
       },
       onError: (err) => {
@@ -84,6 +93,7 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
       onSuccess: async (updated) => {
         setKbs(kbs.map(kb => (kb.id === updated.id ? updated : kb)));
         setEditingKb(null);
+        notifyKnowledgeBasesChanged();
         success('Knowledge base updated');
       },
       onError: (err) => {
@@ -99,6 +109,7 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
       execute: () => apiClientFetch(`/api/knowledge-bases/${id}`, { method: 'DELETE' }),
       onSuccess: async () => {
         setKbs(kbs.filter(kb => kb.id !== id));
+        notifyKnowledgeBasesChanged();
         success('Knowledge base deleted');
       },
       onError: (err) => {

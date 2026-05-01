@@ -66,6 +66,8 @@ const updateArticleSchema = z.object({
 const listQuerySchema = paginationSchema.extend({
   status: z.enum(['draft', 'published', 'archived']).optional(),
   categoryId: z.string().uuid().optional(),
+  includeDescendants: z.preprocess((value) => value === 'true' || value === true, z.boolean()).default(false),
+  sortBy: z.enum(['title', 'updated']).default('updated'),
 });
 
 function withKnowledgeBaseSlug<T extends object>(article: T, kbSlug?: string) {
@@ -110,19 +112,39 @@ async function loadScopedEditorArticle(req: AuthRequest, res: any, id: string) {
 
 // GET /api/articles — paginated list
 articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (req: KbRequest, res) => {
-  const { page, limit, status, categoryId } = res.locals.query as z.infer<typeof listQuerySchema>;
+  const { page, limit, status, categoryId, includeDescendants, sortBy } = res.locals.query as z.infer<typeof listQuerySchema>;
   const offset = (page - 1) * limit;
   const kbId = req.params.kbId as string;
   const user = (req as AuthRequest).user!;
   const globalRole = user.role as Role;
 
-  const conditions: ReturnType<typeof eq>[] = [];
+  const conditions: any[] = [];
   if (status) {
     conditions.push(eq(articles.status, status));
   } else {
     conditions.push(eq(articles.status, 'published'));
   }
-  if (categoryId) conditions.push(eq(articles.categoryId, categoryId));
+  if (categoryId) {
+    if (includeDescendants) {
+      conditions.push(inArray(articles.categoryId, sql`
+        (
+          WITH RECURSIVE category_tree AS (
+            SELECT id
+            FROM categories
+            WHERE id = ${categoryId} AND knowledge_base_id = ${kbId}
+            UNION ALL
+            SELECT c.id
+            FROM categories c
+            INNER JOIN category_tree ct ON c.parent_id = ct.id
+            WHERE c.knowledge_base_id = ${kbId}
+          )
+          SELECT id FROM category_tree
+        )
+      `));
+    } else {
+      conditions.push(eq(articles.categoryId, categoryId));
+    }
+  }
 
   if (kbId) {
     conditions.push(
@@ -137,7 +159,7 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (r
       knowledgeBaseId: kbId,
     });
 
-    if (categoryId && !editableCategoryIds.includes(categoryId)) {
+    if (categoryId && !includeDescendants && !editableCategoryIds.includes(categoryId)) {
       res.json(paginate([], 0, { page, limit }));
       return;
     }
@@ -163,7 +185,9 @@ articlesRouter.get('/', authMiddleware, validateQuery(listQuerySchema), async (r
     .select()
     .from(articles)
     .where(whereClause)
-    .orderBy(sql`${articles.updatedAt} DESC`)
+    .orderBy(sortBy === 'title'
+      ? sql`lower(${articles.title}) ASC, ${articles.updatedAt} DESC`
+      : sql`${articles.updatedAt} DESC`)
     .limit(limit)
     .offset(offset);
 
