@@ -9,7 +9,8 @@ LibreChat ──MCP/HTTP──> dovetail-mcp ──HTTPS+API key──> dovetail
 ```
 
 - The MCP server is a separate process that runs as its own Docker Compose service.
-- It authenticates upstream to the API with one Dovetail API key. The KBs that key is attached to define the entire scope of every tool call.
+- Inbound: external clients must present `Authorization: Bearer $MCP_PUBLIC_BEARER_TOKEN` on `/mcp`. Auth is enforced inside the MCP service, not in Caddy.
+- Upstream: the MCP server forwards `Authorization: Bearer $DOVETAIL_RAG_API_KEY` when calling the Dovetail API. The KBs attached to that key define the entire scope of every tool call.
 - It does not connect to Postgres and does not import `@dovetail/db`. The API is the only data and authorization boundary.
 
 ## Configuration
@@ -18,12 +19,13 @@ All configuration is via environment variables (see `.env.example`).
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MCP_API_KEY` | yes | — | Dovetail API key. Created in the admin UI under **API Keys** and scoped to the KBs LibreChat should access. |
+| `DOVETAIL_RAG_API_KEY` | yes | — | Bearer the MCP service uses upstream to call `/api/v1/rag/*`. Created in the admin UI under **API Keys** and scoped to the KBs LibreChat should access. |
+| `MCP_PUBLIC_BEARER_TOKEN` | yes | — | Bearer external MCP clients (e.g. LibreChat) must present on `/mcp` requests. The MCP service enforces it; `/health` is exempt. |
 | `MCP_API_BASE_URL` | yes | — | Base URL of the Dovetail API, e.g. `http://api:3001` inside Docker Compose or `https://dovetail.example.com` in production. |
 | `MCP_PORT` | no | `3002` | Port the MCP server listens on. |
 | `MCP_REQUEST_TIMEOUT_MS` | no | `15000` | Timeout for upstream API requests. |
 
-The server refuses to start if `MCP_API_KEY` is empty or `MCP_API_BASE_URL` is not a valid URL.
+The server refuses to start if any of `DOVETAIL_RAG_API_KEY`, `MCP_PUBLIC_BEARER_TOKEN`, or `MCP_API_BASE_URL` is missing/invalid.
 
 ## Transport
 
@@ -34,11 +36,11 @@ The MCP server speaks the official MCP **Streamable HTTP** transport at `POST /m
 ## Health
 
 ```
-GET /health           → { status, apiBaseUrl, apiKey: "abcd...wxyz" }
+GET /health           → { status, apiBaseUrl, ragApiKey: "abcd...wxyz", inboundAuth: "bearer" }
 GET /health?deep=1    → adds upstreamReachable: true|false
 ```
 
-The Compose healthcheck hits the cheap variant. The `?deep=1` form makes one round trip to `/api/v1/rag/knowledge-bases` and reports whether the API is reachable with the configured key.
+`/health` is unauthenticated for liveness probing. The Compose healthcheck hits the cheap variant. The `?deep=1` form makes one round trip to `/api/v1/rag/knowledge-bases` and reports whether the upstream RAG API is reachable with the configured `DOVETAIL_RAG_API_KEY`.
 
 ## Tools
 
@@ -140,7 +142,7 @@ just mcp-dev
 pnpm --filter @dovetail/mcp dev
 ```
 
-You will need a running API (`just dev`) and an `MCP_API_KEY` exported in your shell.
+You will need a running API (`just dev`) and both `DOVETAIL_RAG_API_KEY` and `MCP_PUBLIC_BEARER_TOKEN` exported in your shell.
 
 To run inside Docker Compose alongside the rest of the stack:
 
@@ -151,6 +153,5 @@ docker compose up --build   # full stack including mcp
 
 ## Out of scope
 
-- Per-user identity passthrough from LibreChat. The MCP server uses one API key; user-level enforcement happens in Dovetail and is reflected in that key's KB scope.
+- Per-user identity passthrough from LibreChat. The MCP server uses one upstream API key; user-level enforcement happens in Dovetail and is reflected in that key's KB scope.
 - Write or mutation tools.
-- Caddy fronting and Azure VM deployment — see step 12 of `docs/product-gap-analysis.md`.
