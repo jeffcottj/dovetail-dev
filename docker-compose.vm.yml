@@ -68,6 +68,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        API_URL: http://api:3001
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-dovetail}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dovetail}
