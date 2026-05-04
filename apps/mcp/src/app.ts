@@ -1,4 +1,4 @@
-import express, { type Express } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -12,6 +12,30 @@ export interface CreateAppOptions {
   fetcher?: typeof fetch;
 }
 
+function requireBearer(expected: string) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const header = req.header('authorization');
+    if (!header || !header.startsWith('Bearer ')) {
+      res.status(401).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Unauthorized' },
+        id: null,
+      });
+      return;
+    }
+    const presented = header.slice('Bearer '.length).trim();
+    if (presented !== expected) {
+      res.status(401).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Unauthorized' },
+        id: null,
+      });
+      return;
+    }
+    next();
+  };
+}
+
 export function createApp({ config, fetcher }: CreateAppOptions): Express {
   const client = createApiClient({ config, fetcher });
   const app = express();
@@ -19,9 +43,10 @@ export function createApp({ config, fetcher }: CreateAppOptions): Express {
 
   app.get('/health', createHealthHandler({ config, client }));
 
+  const auth = requireBearer(config.publicBearerToken);
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
-  app.post('/mcp', async (req, res) => {
+  app.post('/mcp', auth, async (req, res) => {
     const sessionId = req.header('mcp-session-id');
     let transport = sessionId ? transports.get(sessionId) : undefined;
 
@@ -75,8 +100,8 @@ export function createApp({ config, fetcher }: CreateAppOptions): Express {
     await transport.handleRequest(req, res);
   };
 
-  app.get('/mcp', sessionRequestHandler);
-  app.delete('/mcp', sessionRequestHandler);
+  app.get('/mcp', auth, sessionRequestHandler);
+  app.delete('/mcp', auth, sessionRequestHandler);
 
   return app;
 }

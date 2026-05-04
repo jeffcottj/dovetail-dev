@@ -1,6 +1,11 @@
 export interface McpConfig {
   apiBaseUrl: string;
-  apiKey: string;
+  // Bearer token the MCP service uses to call the Dovetail RAG API
+  // (a Dovetail admin-issued, KB-scoped API key).
+  ragApiKey: string;
+  // Bearer token external MCP clients (e.g. LibreChat) must present
+  // on /mcp requests. Enforced by the MCP service itself.
+  publicBearerToken: string;
   port: number;
   requestTimeoutMs: number;
 }
@@ -17,9 +22,9 @@ function parseUrl(value: string | undefined): string {
   return value.replace(/\/+$/, '');
 }
 
-function parseKey(value: string | undefined): string {
+function parseRequired(value: string | undefined, name: string): string {
   if (!value || value.trim() === '') {
-    throw new Error('MCP_API_KEY is required');
+    throw new Error(`${name} is required`);
   }
   return value;
 }
@@ -36,7 +41,8 @@ function parsePort(value: string | undefined, fallback: number): number {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): McpConfig {
   return {
     apiBaseUrl: parseUrl(env.MCP_API_BASE_URL),
-    apiKey: parseKey(env.MCP_API_KEY),
+    ragApiKey: parseRequired(env.DOVETAIL_RAG_API_KEY, 'DOVETAIL_RAG_API_KEY'),
+    publicBearerToken: parseRequired(env.MCP_PUBLIC_BEARER_TOKEN, 'MCP_PUBLIC_BEARER_TOKEN'),
     port: parsePort(env.MCP_PORT, 3002),
     requestTimeoutMs: parsePort(env.MCP_REQUEST_TIMEOUT_MS, 15000),
   };

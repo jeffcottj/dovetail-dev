@@ -7,7 +7,8 @@ import type { McpConfig } from '../config.js';
 
 const config: McpConfig = {
   apiBaseUrl: 'http://api.test',
-  apiKey: 'abcdefgh1234',
+  ragApiKey: 'abcdefgh1234',
+  publicBearerToken: 'public-token',
   port: 3002,
   requestTimeoutMs: 5000,
 };
@@ -19,14 +20,15 @@ function buildApp(client: ApiClient) {
 }
 
 describe('health endpoint', () => {
-  it('returns ok with redacted key', async () => {
+  it('returns ok with redacted rag key', async () => {
     const client = { ping: vi.fn() } as unknown as ApiClient;
     const app = buildApp(client);
     const res = await supertest(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.apiBaseUrl).toBe('http://api.test');
-    expect(res.body.apiKey).toBe('abcd...1234');
+    expect(res.body.ragApiKey).toBe('abcd...1234');
+    expect(res.body.inboundAuth).toBe('bearer');
     expect(res.body.upstreamReachable).toBeUndefined();
   });
 
