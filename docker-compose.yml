@@ -73,6 +73,7 @@ services:
       ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
       AUTH_TRUST_HOST: "true"
+      HOSTNAME: "0.0.0.0"
     ports:
       - "3000:3000"
     depends_on:
