@@ -5,7 +5,9 @@ import type { NextFunction, Request, Response } from 'express';
 
 const hkdfAsync = promisify(hkdf);
 
-// Auth.js v5 derives the JWE encryption key using HKDF with the cookie name as salt
+// Auth.js v5 names. Production HTTPS uses the __Secure- prefix and salts the
+// HKDF key derivation with that exact cookie name; HTTP/dev uses the bare name.
+const SECURE_COOKIE_NAME = '__Secure-authjs.session-token';
 const COOKIE_NAME = 'authjs.session-token';
 
 async function getDerivedKey(secret: string, salt: string): Promise<Uint8Array> {
@@ -28,7 +30,20 @@ export async function authMiddleware(
   res: Response,
   next: NextFunction,
 ) {
-  const rawToken = req.cookies?.[COOKIE_NAME] ?? req.headers.authorization?.replace('Bearer ', '');
+  const cookies = req.cookies ?? {};
+  let rawToken: string | undefined;
+  let salt: string;
+
+  if (cookies[SECURE_COOKIE_NAME]) {
+    rawToken = cookies[SECURE_COOKIE_NAME];
+    salt = SECURE_COOKIE_NAME;
+  } else if (cookies[COOKIE_NAME]) {
+    rawToken = cookies[COOKIE_NAME];
+    salt = COOKIE_NAME;
+  } else {
+    rawToken = req.headers.authorization?.replace('Bearer ', '');
+    salt = COOKIE_NAME;
+  }
 
   if (!rawToken) {
     res.status(401).json({ error: 'Unauthorized' });
@@ -36,7 +51,6 @@ export async function authMiddleware(
   }
 
   const secret = process.env.NEXTAUTH_SECRET ?? 'dev-secret';
-  const salt = req.cookies?.[COOKIE_NAME] ? COOKIE_NAME : 'authjs.session-token';
 
   try {
     const key = await getDerivedKey(secret, salt);
