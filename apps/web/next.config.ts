@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next';
 
+// API_URL is read at BUILD time and baked into the rewrite below.
+// In Docker, set it via the API_URL build arg (see apps/web/Dockerfile).
 const nextConfig: NextConfig = {
   output: 'standalone',
   experimental: {

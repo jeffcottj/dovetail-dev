@@ -25,6 +25,12 @@ RUN pnpm --filter @dovetail/db build
 RUN touch apps/web/.env
 RUN mkdir -p apps/web/public
 ENV DATABASE_URL=postgres://build:build@localhost:5432/build
+
+# next.config.ts evaluates API_URL at build time for the /api/:path* rewrite,
+# so it must be set before `next build`. Default targets the compose API service.
+ARG API_URL=http://api:3001
+ENV API_URL=$API_URL
+
 RUN pnpm --filter @dovetail/web build
 
 FROM node:20-alpine AS runner
