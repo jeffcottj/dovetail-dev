@@ -26,11 +26,12 @@
         reverse_proxy api:3001
     }
 
-    # Keep MCP internal by default. If an external MCP client needs access,
-    # add an access-controlled route here before exposing /mcp publicly.
-    # handle /mcp* {
-    #     reverse_proxy mcp:3002
-    # }
+    # MCP endpoint for external clients (e.g. LibreChat).
+    # The MCP service enforces Bearer auth itself using MCP_PUBLIC_BEARER_TOKEN,
+    # so Caddy is just a passthrough.
+    handle /mcp* {
+        reverse_proxy mcp:3002
+    }
 
     handle {
         reverse_proxy web:3000

@@ -19,7 +19,7 @@ async function main() {
   const app = createApp({ config });
   const server = app.listen(config.port, () => {
     console.log(
-      `[mcp] listening on :${config.port} -> ${config.apiBaseUrl} (key=${redactKey(config.apiKey)})`,
+      `[mcp] listening on :${config.port} -> ${config.apiBaseUrl} (rag-key=${redactKey(config.ragApiKey)}, inbound=bearer)`,
     );
   });
 

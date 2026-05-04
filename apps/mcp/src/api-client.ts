@@ -63,7 +63,7 @@ export interface CreateApiClientOptions {
 
 export function createApiClient({ config, fetcher = fetch }: CreateApiClientOptions): ApiClient {
   const baseHeaders = {
-    Authorization: `Bearer ${config.apiKey}`,
+    Authorization: `Bearer ${config.ragApiKey}`,
     'Content-Type': 'application/json',
     Accept: 'application/json',
   };

@@ -5,7 +5,8 @@ import type { McpConfig } from '../config.js';
 
 const config: McpConfig = {
   apiBaseUrl: 'http://api.test',
-  apiKey: 'k-test',
+  ragApiKey: 'k-test',
+  publicBearerToken: 'public-token',
   port: 3002,
   requestTimeoutMs: 5000,
 };

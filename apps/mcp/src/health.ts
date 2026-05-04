@@ -14,7 +14,8 @@ export function createHealthHandler({ config, client }: HealthDeps) {
     const base = {
       status: 'ok' as const,
       apiBaseUrl: config.apiBaseUrl,
-      apiKey: redactKey(config.apiKey),
+      ragApiKey: redactKey(config.ragApiKey),
+      inboundAuth: 'bearer' as const,
     };
 
     if (!deep) {
