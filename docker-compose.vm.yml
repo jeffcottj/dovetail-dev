@@ -83,11 +83,12 @@ services:
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:?ENTRA_TENANT_ID is required}
       AUTH_TRUST_HOST: "true"
       DEV_AUTH_ENABLED: "false"
+      HOSTNAME: "0.0.0.0"
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
