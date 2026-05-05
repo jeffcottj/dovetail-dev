@@ -54,6 +54,10 @@ function normalizeDate(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
+function sqlTimestamp(value: string): string {
+  return normalizeDate(value).replace('T', ' ').replace('Z', '');
+}
+
 function normalizeSearchRow(row: any) {
   return {
     ...row,
@@ -146,19 +150,19 @@ async function buildSqlFilters(params: {
   }
 
   if (params.updatedFrom) {
-    filters.push(sql`a.updated_at >= ${new Date(params.updatedFrom)}`);
+    filters.push(sql`a.updated_at >= ${sqlTimestamp(params.updatedFrom)}::timestamp`);
   }
 
   if (params.updatedTo) {
-    filters.push(sql`a.updated_at <= ${new Date(params.updatedTo)}`);
+    filters.push(sql`a.updated_at <= ${sqlTimestamp(params.updatedTo)}::timestamp`);
   }
 
   if (params.updatedBefore) {
-    filters.push(sql`a.updated_at <= ${new Date(params.updatedBefore)}`);
+    filters.push(sql`a.updated_at <= ${sqlTimestamp(params.updatedBefore)}::timestamp`);
   }
 
   if (params.createdBefore) {
-    filters.push(sql`a.created_at <= ${new Date(params.createdBefore)}`);
+    filters.push(sql`a.created_at <= ${sqlTimestamp(params.createdBefore)}::timestamp`);
   }
 
   if (params.tagIds && params.tagIds.length > 0) {
