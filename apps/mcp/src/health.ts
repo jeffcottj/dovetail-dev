@@ -1,20 +1,17 @@
 import type { Request, Response } from 'express';
-import type { ApiClient } from './api-client.js';
 import type { McpConfig } from './config.js';
-import { redactKey } from './config.js';
 
 export interface HealthDeps {
   config: McpConfig;
-  client: ApiClient;
+  fetcher?: typeof fetch;
 }
 
-export function createHealthHandler({ config, client }: HealthDeps) {
+export function createHealthHandler({ config, fetcher = fetch }: HealthDeps) {
   return async (req: Request, res: Response): Promise<void> => {
     const deep = req.query.deep === '1' || req.query.deep === 'true';
     const base = {
       status: 'ok' as const,
       apiBaseUrl: config.apiBaseUrl,
-      ragApiKey: redactKey(config.ragApiKey),
       inboundAuth: 'bearer' as const,
     };
 
@@ -23,7 +20,23 @@ export function createHealthHandler({ config, client }: HealthDeps) {
       return;
     }
 
-    const reachable = await client.ping();
-    res.json({ ...base, upstreamReachable: reachable });
+    let upstreamReachable = false;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+      try {
+        const response = await fetcher(`${config.apiBaseUrl}/health`, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        upstreamReachable = response.ok;
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      upstreamReachable = false;
+    }
+
+    res.json({ ...base, upstreamReachable });
   };
 }

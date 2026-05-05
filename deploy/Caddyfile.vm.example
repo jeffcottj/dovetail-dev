@@ -27,8 +27,9 @@
     }
 
     # MCP endpoint for external clients (e.g. LibreChat).
-    # The MCP service enforces Bearer auth itself using MCP_PUBLIC_BEARER_TOKEN,
-    # so Caddy is just a passthrough.
+    # Clients present a Dovetail admin-issued API key as the Bearer token; the
+    # MCP service forwards it to the RAG API, where validity and KB scope are
+    # enforced. Caddy is just a passthrough.
     handle /mcp* {
         reverse_proxy mcp:3002
     }

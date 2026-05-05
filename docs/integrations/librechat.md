@@ -4,41 +4,37 @@ LibreChat connects to Dovetail through the **Dovetail MCP server** (`apps/mcp`),
 
 For raw HTTP-only clients (without MCP support), the underlying REST endpoints are documented in [`docs/integrations/rag-api.md`](./rag-api.md).
 
+## How auth works
+
+There is **one** secret per LibreChat agent: a Dovetail admin-issued API key. LibreChat presents it as the bearer on every `/mcp` request, the MCP server forwards it verbatim to the RAG API, and per-KB scoping is enforced by Dovetail against the `api_keys` table on every call.
+
+If you want different LibreChat agents to talk to different KBs, issue a separate Dovetail API key per agent and scope each to the KB(s) it should reach.
+
 ## Prerequisites
 
 - A running Dovetail instance, with `api`, `web`, `mcp`, and `postgres` services up.
-- Admin access to Dovetail (for creating an API key).
+- Admin access to Dovetail (for creating API keys).
 - A LibreChat instance with MCP server support.
 
-## Step 1: Create a Dovetail API key (upstream)
+## Step 1: Create a Dovetail API key per agent
 
 1. Sign in to Dovetail as a global admin.
 2. Open **Admin → API Keys**.
-3. Click **Create API Key**, name it (e.g. "LibreChat Production"), and **scope it to the KBs you want LibreChat to access**.
+3. Click **Create API Key**, name it after the agent (e.g. "LibreChat – Tenant Help"), and **scope it to the KBs that agent should access**.
 4. Copy the key immediately — it is shown only once.
-5. Store it in your secrets manager — this is `DOVETAIL_RAG_API_KEY`, used by the MCP server to call the Dovetail RAG API.
+5. Store it in your secrets manager. This is the value LibreChat will send as `Authorization: Bearer …` on `/mcp` requests.
 
-The KBs you select here define the entire LibreChat scope. The MCP server has no separate scope configuration.
+Repeat for each LibreChat agent that should target a different KB scope.
 
-## Step 2: Generate the public MCP bearer token (inbound)
-
-LibreChat must present a separate bearer token on every `/mcp` request. The MCP service enforces it.
-
-```bash
-openssl rand -base64 32
-```
-
-Store that value as `MCP_PUBLIC_BEARER_TOKEN` in the Dovetail `.env` and share it with the LibreChat operator. Rotating it does not require a new Dovetail API key.
-
-## Step 3: Run the Dovetail MCP server
+## Step 2: Run the Dovetail MCP server
 
 The MCP server ships as a Compose service. In the same directory as `docker-compose.yml`:
 
 ```bash
-export DOVETAIL_RAG_API_KEY=<the-key-from-step-1>
-export MCP_PUBLIC_BEARER_TOKEN=<the-token-from-step-2>
 docker compose up -d mcp
 ```
+
+The MCP server itself owns no secrets — there is nothing to set in `.env` for it beyond `MCP_API_BASE_URL` (already pre-set in Compose).
 
 Confirm it is healthy:
 
@@ -48,11 +44,11 @@ curl http://localhost:3002/health
 curl 'http://localhost:3002/health?deep=1'
 ```
 
-`?deep=1` calls the upstream API once and reports whether `DOVETAIL_RAG_API_KEY` authenticates correctly.
+`?deep=1` calls the API's own `/health` and reports whether the upstream is reachable. It does not exercise an API key — auth is per-request and per-agent.
 
 Configuration variables are documented in [`docs/integrations/mcp.md`](./mcp.md).
 
-## Step 4: Point LibreChat at the MCP server
+## Step 3: Point LibreChat at the MCP server
 
 Add the Dovetail MCP server to your LibreChat configuration. The exact YAML/JSON shape depends on your LibreChat version — check the [LibreChat MCP docs](https://www.librechat.ai/) for the current schema. The values you need:
 
@@ -60,22 +56,27 @@ Add the Dovetail MCP server to your LibreChat configuration. The exact YAML/JSON
 |---|---|
 | Transport | `streamable-http` (also called "HTTP" or "Streamable HTTP") |
 | URL | `http://<mcp-host>:3002/mcp` (Compose) or `https://<dovetail-domain>/mcp` (production) |
-| Auth | `Authorization: Bearer $MCP_PUBLIC_BEARER_TOKEN` |
+| Auth | `Authorization: Bearer <Dovetail API key from Step 1>` |
 
-A representative `librechat.yaml` snippet:
+A representative `librechat.yaml` snippet, with one MCP server entry per agent:
 
 ```yaml
 mcpServers:
-  dovetail:
+  dovetail-tenant:
     type: streamable-http
     url: https://dovetail.example.com/mcp
     headers:
-      Authorization: "Bearer ${MCP_PUBLIC_BEARER_TOKEN}"
+      Authorization: "Bearer ${DOVETAIL_TENANT_KB_KEY}"
+  dovetail-eviction:
+    type: streamable-http
+    url: https://dovetail.example.com/mcp
+    headers:
+      Authorization: "Bearer ${DOVETAIL_EVICTION_KB_KEY}"
 ```
 
 When LibreChat is on the same Docker Compose network as Dovetail, swap the URL for `http://mcp:3002/mcp`. The bearer header is still required.
 
-## Step 5: Verify the tools appear
+## Step 4: Verify the tools appear
 
 After restarting LibreChat, the following six tools should be available to assistants:
 
@@ -100,28 +101,23 @@ If the tools are missing or always error, check the MCP server logs (`docker com
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| LibreChat sees `401` connecting to `/mcp` | `MCP_PUBLIC_BEARER_TOKEN` mismatch between Dovetail and the LibreChat config | Resync the token; restart `mcp` if changed in `.env`. |
-| All tools return `unauthorized` | `DOVETAIL_RAG_API_KEY` missing, revoked, or wrong | Recreate the upstream key in Dovetail admin and restart `mcp`. |
-| Tools return `forbidden` for some KBs | Upstream key not scoped to that KB | Edit the API key in Dovetail admin to add that KB. |
-| `list_knowledge_bases` returns `[]` | Upstream key has no KBs attached | Attach KBs via the admin UI. |
+| LibreChat sees `401` connecting to `/mcp` | Bearer header missing, or API key revoked / typo | Confirm the `Authorization` header is set; recreate the key in Dovetail admin if needed. |
+| All tools return `unauthorized` | The presented key is invalid or revoked | Issue a new key in Dovetail admin and update the LibreChat config. |
+| Tools return `forbidden` for some KBs | Key not scoped to that KB | Edit the API key in Dovetail admin to add that KB. |
+| `list_knowledge_bases` returns `[]` | Key has no KBs attached | Attach KBs via the admin UI. |
 | LibreChat does not see the MCP server | URL/port wrong, or LibreChat not on the network | Verify with `curl http://<mcp-host>:3002/health`. |
 | Drafts/archived articles never appear | Working as intended | Only published articles are exposed. |
 | `network` errors in MCP logs | API not reachable from MCP container | Check Compose `depends_on`/networking and that `MCP_API_BASE_URL` resolves from the MCP container. |
 
-## Rotating tokens
+## Rotating keys
 
-**Rotating the upstream Dovetail API key (`DOVETAIL_RAG_API_KEY`):**
+Per agent, treat the Dovetail API key as the only credential to rotate:
 
-1. Create a new API key in Dovetail admin with the same KB scope.
-2. Update the `DOVETAIL_RAG_API_KEY` secret.
-3. `docker compose up -d mcp` to restart the MCP service with the new key.
-4. Revoke the old key in Dovetail admin.
+1. In Dovetail admin, create a new API key with the same KB scope.
+2. Update the LibreChat config for that agent to use the new key and reload LibreChat.
+3. Revoke the old key in Dovetail admin.
 
-**Rotating the public MCP bearer (`MCP_PUBLIC_BEARER_TOKEN`):**
-
-1. Generate a new random secret (`openssl rand -base64 32`).
-2. Update the secret on both sides — Dovetail `.env` and LibreChat config — at the same time.
-3. `docker compose up -d mcp` and restart LibreChat. Until both restart with the new value, expect `401` on `/mcp`.
+Other agents are unaffected — each has its own key.
 
 ## Direct REST integration (legacy)
 

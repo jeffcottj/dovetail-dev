@@ -3,55 +3,83 @@ import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { McpConfig } from './config.js';
-import { createApiClient } from './api-client.js';
+import { createApiClient, type ApiClient } from './api-client.js';
 import { createMcpServer } from './server.js';
 import { createHealthHandler } from './health.js';
 
 export interface CreateAppOptions {
   config: McpConfig;
   fetcher?: typeof fetch;
+  idleSessionTtlMs?: number;
 }
 
-function requireBearer(expected: string) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const header = req.header('authorization');
-    if (!header || !header.startsWith('Bearer ')) {
-      res.status(401).json({
-        jsonrpc: '2.0',
-        error: { code: -32001, message: 'Unauthorized' },
-        id: null,
-      });
-      return;
-    }
-    const presented = header.slice('Bearer '.length).trim();
-    if (presented !== expected) {
-      res.status(401).json({
-        jsonrpc: '2.0',
-        error: { code: -32001, message: 'Unauthorized' },
-        id: null,
-      });
-      return;
-    }
-    next();
-  };
+interface Session {
+  transport: StreamableHTTPServerTransport;
+  client: ApiClient;
+  token: string;
+  lastSeenAt: number;
 }
 
-export function createApp({ config, fetcher }: CreateAppOptions): Express {
-  const client = createApiClient({ config, fetcher });
+interface AuthedRequest extends Request {
+  bearerToken?: string;
+}
+
+const DEFAULT_IDLE_TTL_MS = 30 * 60 * 1000;
+
+function unauthorized(res: Response): void {
+  res.status(401).json({
+    jsonrpc: '2.0',
+    error: { code: -32001, message: 'Unauthorized' },
+    id: null,
+  });
+}
+
+function requireBearer(req: AuthedRequest, res: Response, next: NextFunction): void {
+  const header = req.header('authorization');
+  if (!header || !header.startsWith('Bearer ')) {
+    unauthorized(res);
+    return;
+  }
+  const token = header.slice('Bearer '.length).trim();
+  if (token === '') {
+    unauthorized(res);
+    return;
+  }
+  req.bearerToken = token;
+  next();
+}
+
+export function createApp({ config, fetcher, idleSessionTtlMs = DEFAULT_IDLE_TTL_MS }: CreateAppOptions): Express {
   const app = express();
   app.use(express.json({ limit: '4mb' }));
 
-  app.get('/health', createHealthHandler({ config, client }));
+  app.get('/health', createHealthHandler({ config }));
 
-  const auth = requireBearer(config.publicBearerToken);
-  const transports = new Map<string, StreamableHTTPServerTransport>();
+  const sessions = new Map<string, Session>();
 
-  app.post('/mcp', auth, async (req, res) => {
+  function sweepIdleSessions(now: number): void {
+    for (const [id, session] of sessions) {
+      if (now - session.lastSeenAt > idleSessionTtlMs) {
+        sessions.delete(id);
+        try {
+          void session.transport.close?.();
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  app.post('/mcp', requireBearer, async (req: AuthedRequest, res) => {
+    const now = Date.now();
+    sweepIdleSessions(now);
+
+    const token = req.bearerToken!;
     const sessionId = req.header('mcp-session-id');
-    let transport = sessionId ? transports.get(sessionId) : undefined;
 
-    if (!transport) {
-      if (sessionId) {
+    if (sessionId) {
+      const session = sessions.get(sessionId);
+      if (!session) {
         res.status(404).json({
           jsonrpc: '2.0',
           error: { code: -32000, message: 'Unknown session' },
@@ -59,49 +87,66 @@ export function createApp({ config, fetcher }: CreateAppOptions): Express {
         });
         return;
       }
-
-      if (!isInitializeRequest(req.body)) {
-        res.status(400).json({
-          jsonrpc: '2.0',
-          error: { code: -32000, message: 'Initialization required before non-initialize requests' },
-          id: null,
-        });
+      if (session.token !== token) {
+        unauthorized(res);
         return;
       }
-
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (id) => {
-          transports.set(id, transport!);
-        },
-      });
-      transport.onclose = () => {
-        if (transport!.sessionId) transports.delete(transport!.sessionId);
-      };
-
-      const server = createMcpServer({ client });
-      await server.connect(transport);
+      session.lastSeenAt = now;
+      await session.transport.handleRequest(req, res, req.body);
+      return;
     }
+
+    if (!isInitializeRequest(req.body)) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Initialization required before non-initialize requests' },
+        id: null,
+      });
+      return;
+    }
+
+    const client = createApiClient({ config, token, fetcher });
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        sessions.set(id, { transport, client, token, lastSeenAt: Date.now() });
+      },
+    });
+    transport.onclose = () => {
+      if (transport.sessionId) sessions.delete(transport.sessionId);
+    };
+
+    const server = createMcpServer({ client });
+    await server.connect(transport);
 
     await transport.handleRequest(req, res, req.body);
   });
 
-  const sessionRequestHandler = async (req: express.Request, res: express.Response) => {
+  const sessionRequestHandler = async (req: AuthedRequest, res: express.Response) => {
+    const now = Date.now();
+    sweepIdleSessions(now);
+
+    const token = req.bearerToken!;
     const sessionId = req.header('mcp-session-id');
     if (!sessionId) {
       res.status(400).end();
       return;
     }
-    const transport = transports.get(sessionId);
-    if (!transport) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).end();
       return;
     }
-    await transport.handleRequest(req, res);
+    if (session.token !== token) {
+      unauthorized(res);
+      return;
+    }
+    session.lastSeenAt = now;
+    await session.transport.handleRequest(req, res);
   };
 
-  app.get('/mcp', auth, sessionRequestHandler);
-  app.delete('/mcp', auth, sessionRequestHandler);
+  app.get('/mcp', requireBearer, sessionRequestHandler);
+  app.delete('/mcp', requireBearer, sessionRequestHandler);
 
   return app;
 }

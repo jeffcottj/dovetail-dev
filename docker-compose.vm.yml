@@ -52,8 +52,6 @@ services:
     environment:
       MCP_PORT: 3002
       MCP_API_BASE_URL: http://api:3001
-      DOVETAIL_RAG_API_KEY: ${DOVETAIL_RAG_API_KEY:?DOVETAIL_RAG_API_KEY is required}
-      MCP_PUBLIC_BEARER_TOKEN: ${MCP_PUBLIC_BEARER_TOKEN:?MCP_PUBLIC_BEARER_TOKEN is required}
       MCP_REQUEST_TIMEOUT_MS: ${MCP_REQUEST_TIMEOUT_MS:-15000}
     depends_on:
       api:

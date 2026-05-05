@@ -64,9 +64,8 @@ EMBEDDING_PROVIDER=openai
 EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_API_KEY=<openai-api-key>
 
-# MCP — see "MCP Keys" below
-DOVETAIL_RAG_API_KEY=<dovetail-api-key-created-after-first-login>
-MCP_PUBLIC_BEARER_TOKEN=<random-secret-for-external-mcp-clients>
+# MCP — no per-deployment secret. Each MCP client authenticates with a
+# Dovetail admin-issued API key created at /admin/api-keys (see "MCP Keys").
 ```
 
 Generate secrets with:
@@ -114,25 +113,16 @@ Log out and back in after promotion.
 
 ## MCP Keys
 
-The MCP service uses two distinct bearer tokens — one inbound, one upstream:
-
-- **`DOVETAIL_RAG_API_KEY`** — bearer the MCP service forwards to the Dovetail RAG API. Must be a Dovetail admin-issued API key scoped to the knowledge bases the MCP server should expose.
-- **`MCP_PUBLIC_BEARER_TOKEN`** — bearer external MCP clients (e.g. LibreChat) must present on `/mcp` requests. The MCP service enforces it.
+The MCP service owns no secrets. External MCP clients authenticate by presenting a Dovetail admin-issued API key directly as the bearer on `/mcp` requests; the MCP service forwards that token verbatim to the RAG API, which validates it and applies its KB scope. Issue one key per agent/integration and scope each to the KBs that agent should reach.
 
 Setup after first login:
 
 1. Log in as an admin.
 2. Go to `/admin/api-keys`.
 3. Create a key, scope it to the desired KBs, copy the value.
-4. Set `DOVETAIL_RAG_API_KEY` to that value in `.env.production`.
-5. Generate a separate `MCP_PUBLIC_BEARER_TOKEN` (e.g. `openssl rand -base64 32`) and put it in `.env.production`. Share this token with the LibreChat operator.
-6. Restart MCP:
+4. Configure the MCP client (e.g. LibreChat) with `Authorization: Bearer <the-key>` for that agent. Repeat steps 3–4 for each agent that needs a different KB scope.
 
-```sh
-docker compose --env-file .env.production -f docker-compose.vm.yml up -d mcp
-```
-
-The Caddy config exposes `/mcp*` as a passthrough; auth is enforced inside the MCP service. Requests without `Authorization: Bearer $MCP_PUBLIC_BEARER_TOKEN` get `401`.
+The Caddy config exposes `/mcp*` as a passthrough; auth is enforced by the RAG API on every tool call. Requests without an `Authorization: Bearer …` header get `401` at the MCP layer; requests with an invalid or revoked key get `401` from the upstream RAG API.
 
 ## Health Checks
 
@@ -170,22 +160,16 @@ curl -i https://$DOVETAIL_DOMAIN/api/me
 # MCP rejects unauthenticated requests. Expect: 401.
 curl -i https://$DOVETAIL_DOMAIN/mcp
 
-# MCP rejects wrong bearer. Expect: 401.
-curl -i -H "Authorization: Bearer wrong" -X POST \
+# MCP accepts a valid Dovetail API key. Expect: 200 with text/event-stream
+# body. Substitute a key minted at /admin/api-keys.
+curl -i -H "Authorization: Bearer $DOVETAIL_API_KEY" -X POST \
   https://$DOVETAIL_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}}'
 
-# MCP accepts the public bearer. Expect: 200 with text/event-stream body.
-curl -i -H "Authorization: Bearer $MCP_PUBLIC_BEARER_TOKEN" -X POST \
-  https://$DOVETAIL_DOMAIN/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}}'
-
-# MCP upstream (Dovetail RAG) reachable with the configured key.
-# Expect: upstreamReachable: true. Run from inside the VM.
+# MCP upstream (Dovetail RAG /health) reachable. Expect: upstreamReachable:
+# true. Run from inside the VM. This does not exercise an API key.
 docker compose --env-file .env.production -f docker-compose.vm.yml exec mcp \
   wget -qO- 'http://localhost:3002/health?deep=1'
 ```
@@ -284,5 +268,6 @@ Common issues:
 - API is unhealthy: run `docker compose ... logs api` and check `/ready`.
 - Login works but API calls fail: `NEXT_PUBLIC_API_URL` should be the public HTTPS origin.
 - Attachments are missing after restore: confirm the backup archive contains `uploads.tar.gz` and the restore completed without errors.
-- MCP tools fail with `unauthorized`: verify `DOVETAIL_RAG_API_KEY` (the upstream key), then check `curl http://mcp:3002/health?deep=1` from inside the Compose network. `upstreamReachable: false` means MCP cannot authenticate to the Dovetail RAG API.
-- LibreChat or other external MCP clients get `401` from `/mcp`: verify `MCP_PUBLIC_BEARER_TOKEN` matches the `Authorization: Bearer ...` value the client presents.
+- MCP tools fail with `unauthorized`: the API key the client is presenting is missing, invalid, or revoked. Confirm the client sends `Authorization: Bearer <key>` and that the key still exists at `/admin/api-keys`. Run `curl http://mcp:3002/health?deep=1` from inside the Compose network to check upstream reachability — `upstreamReachable: false` means MCP cannot reach the Dovetail API at all.
+- MCP tools fail with `forbidden`: the presented key is valid but not scoped to the requested KB. Edit the key at `/admin/api-keys` to add the KB.
+- External MCP clients get `401` from `/mcp`: the `Authorization` header is missing or not a `Bearer` value. Token validity is enforced by the RAG API on the first tool call, not at `/mcp` itself.

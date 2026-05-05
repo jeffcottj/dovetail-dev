@@ -58,12 +58,13 @@ type Fetcher = typeof fetch;
 
 export interface CreateApiClientOptions {
   config: McpConfig;
+  token: string;
   fetcher?: Fetcher;
 }
 
-export function createApiClient({ config, fetcher = fetch }: CreateApiClientOptions): ApiClient {
+export function createApiClient({ config, token, fetcher = fetch }: CreateApiClientOptions): ApiClient {
   const baseHeaders = {
-    Authorization: `Bearer ${config.ragApiKey}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
     Accept: 'application/json',
   };

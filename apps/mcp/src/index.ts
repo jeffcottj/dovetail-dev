@@ -1,7 +1,7 @@
 import { config as loadDotenv } from 'dotenv';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, redactKey } from './config.js';
+import { loadConfig } from './config.js';
 import { createApp } from './app.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,7 +19,7 @@ async function main() {
   const app = createApp({ config });
   const server = app.listen(config.port, () => {
     console.log(
-      `[mcp] listening on :${config.port} -> ${config.apiBaseUrl} (rag-key=${redactKey(config.ragApiKey)}, inbound=bearer)`,
+      `[mcp] listening on :${config.port} -> ${config.apiBaseUrl} (inbound=bearer, upstream=passthrough)`,
     );
   });
 
