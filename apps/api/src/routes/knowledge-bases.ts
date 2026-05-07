@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { adminActivityEvents, db, knowledgeBases, categories, importJobs, tags, userKbRoles } from '@dovetail/db';
+import { adminActivityEvents, articles, attachments, db, knowledgeBases, categories, importJobs, tags, userKbRoles } from '@dovetail/db';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { resolveKb, requireKbAdmin } from '../middleware/resolveKb.js';
@@ -180,9 +180,12 @@ knowledgeBasesRouter.patch(
   },
 );
 
-// DELETE /api/knowledge-bases/:id — delete KB (global admin only, fails if has categories)
+// DELETE /api/knowledge-bases/:id — delete KB (global admin only).
+// Pass ?purge=true to cascade-delete all KB contents (categories, articles,
+// attachments, tags, import history) before removing the KB itself.
 knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
   const id = req.params.id as string;
+  const purge = req.query.purge === 'true';
   let hasDependents = false;
   let notFound = false;
 
@@ -191,6 +194,61 @@ knowledgeBasesRouter.delete('/:id', authMiddleware, requireRole('admin'), async 
       const [kb] = await tx.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
       if (!kb) {
         notFound = true;
+        return;
+      }
+
+      if (purge) {
+        const categoryIdRows = await tx
+          .select({ id: categories.id })
+          .from(categories)
+          .where(eq(categories.knowledgeBaseId, id));
+        const categoryIds = categoryIdRows.map((row) => row.id);
+
+        const articleIdRows = categoryIds.length > 0
+          ? await tx
+              .select({ id: articles.id })
+              .from(articles)
+              .where(inArray(articles.categoryId, categoryIds))
+          : [];
+        const articleIds = articleIdRows.map((row) => row.id);
+
+        const [tagCountRow] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(tags)
+          .where(eq(tags.knowledgeBaseId, id));
+        const [importJobCountRow] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(importJobs)
+          .where(eq(importJobs.knowledgeBaseId, id));
+
+        if (articleIds.length > 0) {
+          // attachments use ON DELETE SET NULL; delete explicitly so they don't orphan
+          await tx.delete(attachments).where(inArray(attachments.articleId, articleIds));
+          // articles cascade to versions, article_tags, embeddings
+          await tx.delete(articles).where(inArray(articles.id, articleIds));
+        }
+        if (categoryIds.length > 0) {
+          await tx.delete(categories).where(inArray(categories.id, categoryIds));
+        }
+        await tx.delete(tags).where(eq(tags.knowledgeBaseId, id));
+        await tx.delete(importJobs).where(eq(importJobs.knowledgeBaseId, id));
+
+        await tx.insert(adminActivityEvents).values(buildAdminActivityInsert({
+          kind: 'kb.deleted',
+          actorId: req.user!.id,
+          knowledgeBaseId: id,
+          subjectId: id,
+          subjectLabel: kb.name,
+          metadata: {
+            purged: true,
+            articles: articleIds.length,
+            categories: categoryIds.length,
+            tags: Number(tagCountRow.count),
+            importJobs: Number(importJobCountRow.count),
+          },
+        }));
+
+        await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
         return;
       }
 

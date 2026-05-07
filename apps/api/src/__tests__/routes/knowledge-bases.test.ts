@@ -633,6 +633,116 @@ describe('Knowledge Base routes', () => {
       expect(res.status).toBe(404);
       expect(tx!.delete).toHaveBeenCalledTimes(1);
     });
+
+    it('purges KB contents and records counts when ?purge=true', async () => {
+      let activityInsert: ReturnType<typeof createChain>;
+      let attachmentsDelete: ReturnType<typeof createChain>;
+      let articlesDelete: ReturnType<typeof createChain>;
+      let categoriesDelete: ReturnType<typeof createChain>;
+      let tagsDelete: ReturnType<typeof createChain>;
+      let importJobsDelete: ReturnType<typeof createChain>;
+      let kbDelete: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-kb-purge' }]);
+        attachmentsDelete = createChain(undefined);
+        articlesDelete = createChain(undefined);
+        categoriesDelete = createChain(undefined);
+        tagsDelete = createChain(undefined);
+        importJobsDelete = createChain(undefined);
+        kbDelete = createChain(undefined);
+        const tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb])) // KB lookup
+            .mockReturnValueOnce(createChain([{ id: 'cat-1' }, { id: 'cat-2' }])) // category ids
+            .mockReturnValueOnce(createChain([{ id: 'art-1' }, { id: 'art-2' }, { id: 'art-3' }])) // article ids
+            .mockReturnValueOnce(createChain([{ count: 5 }])) // tag count
+            .mockReturnValueOnce(createChain([{ count: 2 }])), // import job count
+          insert: vi.fn().mockReturnValueOnce(activityInsert),
+          delete: vi.fn()
+            .mockReturnValueOnce(attachmentsDelete)
+            .mockReturnValueOnce(articlesDelete)
+            .mockReturnValueOnce(categoriesDelete)
+            .mockReturnValueOnce(tagsDelete)
+            .mockReturnValueOnce(importJobsDelete)
+            .mockReturnValueOnce(kbDelete),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1?purge=true')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(204);
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'kb.deleted',
+        actorId: 'user-3',
+        knowledgeBaseId: 'kb-1',
+        subjectId: 'kb-1',
+        subjectLabel: 'Default',
+        metadata: {
+          purged: true,
+          articles: 3,
+          categories: 2,
+          tags: 5,
+          importJobs: 2,
+        },
+      }));
+      // attachments, articles, categories, tags, import_jobs, knowledge_bases
+      expect(attachmentsDelete!.where).toHaveBeenCalled();
+      expect(articlesDelete!.where).toHaveBeenCalled();
+      expect(categoriesDelete!.where).toHaveBeenCalled();
+      expect(tagsDelete!.where).toHaveBeenCalled();
+      expect(importJobsDelete!.where).toHaveBeenCalled();
+      expect(kbDelete!.where).toHaveBeenCalled();
+    });
+
+    it('purge succeeds against an already-empty KB', async () => {
+      let activityInsert: ReturnType<typeof createChain>;
+      let tagsDelete: ReturnType<typeof createChain>;
+      let importJobsDelete: ReturnType<typeof createChain>;
+      let kbDelete: ReturnType<typeof createChain>;
+      (db.transaction as Mock).mockImplementation(async (fn: Function) => {
+        activityInsert = createChain([{ id: 'evt-kb-purge' }]);
+        tagsDelete = createChain(undefined);
+        importJobsDelete = createChain(undefined);
+        kbDelete = createChain(undefined);
+        const tx = {
+          select: vi.fn()
+            .mockReturnValueOnce(createChain([mockKb]))
+            .mockReturnValueOnce(createChain([])) // no categories
+            .mockReturnValueOnce(createChain([{ count: 0 }])) // tag count
+            .mockReturnValueOnce(createChain([{ count: 0 }])), // import job count
+          insert: vi.fn().mockReturnValueOnce(activityInsert),
+          delete: vi.fn()
+            .mockReturnValueOnce(tagsDelete)
+            .mockReturnValueOnce(importJobsDelete)
+            .mockReturnValueOnce(kbDelete),
+        };
+        return fn(tx);
+      });
+
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1?purge=true')
+        .set('Cookie', `${COOKIE_NAME}=${adminToken}`);
+
+      expect(res.status).toBe(204);
+      expect(activityInsert!.values).toHaveBeenCalledWith(buildAdminActivityInsert({
+        kind: 'kb.deleted',
+        actorId: 'user-3',
+        knowledgeBaseId: 'kb-1',
+        subjectId: 'kb-1',
+        subjectLabel: 'Default',
+        metadata: { purged: true, articles: 0, categories: 0, tags: 0, importJobs: 0 },
+      }));
+    });
+
+    it('purge requires admin (403 for editor)', async () => {
+      const res = await supertest(app)
+        .delete('/api/knowledge-bases/kb-1?purge=true')
+        .set('Cookie', `${COOKIE_NAME}=${editorToken}`);
+      expect(res.status).toBe(403);
+    });
   });
 
   describe('KB User Role routes', () => {

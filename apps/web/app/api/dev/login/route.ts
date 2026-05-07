@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { sanitizeCallbackUrl } from '../../../../lib/callback-url';
 import {
   DEV_AUTH_COOKIE_NAME,
   createDevSessionToken,
@@ -24,8 +25,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unknown dev user' }, { status: 400 });
   }
 
+  const callbackRaw = formData.get('callbackUrl');
+  const callbackUrl = sanitizeCallbackUrl(typeof callbackRaw === 'string' ? callbackRaw : null) ?? '/';
+
   const token = await createDevSessionToken(userKey as DevUserKey);
-  const response = NextResponse.redirect(new URL('/', request.url), { status: 303 });
+  const response = NextResponse.redirect(new URL(callbackUrl, request.url), { status: 303 });
   response.cookies.set({
     name: DEV_AUTH_COOKIE_NAME,
     value: token,

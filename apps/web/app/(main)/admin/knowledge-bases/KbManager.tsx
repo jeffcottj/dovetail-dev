@@ -34,6 +34,10 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
   const [editDefaultAccess, setEditDefaultAccess] = useState<KbDefaultAccess>('org_viewer');
   const [loading, setLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
+  const [deletingKb, setDeletingKb] = useState<KnowledgeBase | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [forcePurge, setForcePurge] = useState(false);
   const { success, error } = useToast();
 
   useEffect(() => {
@@ -104,19 +108,42 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
     setEditLoading(false);
   }
 
-  async function handleDelete(id: string) {
+  function openDelete(kb: KnowledgeBase) {
+    setDeletingKb(kb);
+    setDeleteConfirmInput('');
+    setForcePurge(false);
+  }
+
+  function closeDelete() {
+    setDeletingKb(null);
+    setDeleteConfirmInput('');
+    setForcePurge(false);
+  }
+
+  const canConfirmDelete = deletingKb !== null && deleteConfirmInput === deletingKb.name;
+
+  async function handleDeleteConfirmed() {
+    if (!deletingKb || !canConfirmDelete) return;
+    const target = deletingKb;
+    const purge = forcePurge;
+    setDeleteLoading(true);
     await runAdminMutation({
-      execute: () => apiClientFetch(`/api/knowledge-bases/${id}`, { method: 'DELETE' }),
+      execute: () => apiClientFetch(
+        `/api/knowledge-bases/${target.id}${purge ? '?purge=true' : ''}`,
+        { method: 'DELETE' },
+      ),
       onSuccess: async () => {
-        setKbs(kbs.filter(kb => kb.id !== id));
+        setKbs(kbs.filter(kb => kb.id !== target.id));
+        closeDelete();
         notifyKnowledgeBasesChanged();
-        success('Knowledge base deleted');
+        success(purge ? 'Knowledge base purged' : 'Knowledge base deleted');
       },
       onError: (err) => {
         error(err instanceof Error ? err.message : 'Failed to delete knowledge base');
       },
       refresh: router.refresh,
     });
+    setDeleteLoading(false);
   }
 
   return (
@@ -137,7 +164,7 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
               </div>
               <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={() => openEdit(kb)}>Edit</Button>
-                <Button variant="danger" size="sm" onClick={() => handleDelete(kb.id)}>Delete</Button>
+                <Button variant="danger" size="sm" onClick={() => openDelete(kb)}>Delete</Button>
               </div>
             </div>
           </Card>
@@ -212,6 +239,65 @@ export function KbManager({ initialKbs }: { initialKbs: KnowledgeBase[] }) {
             <p className="mt-1 text-xs text-ink-muted">{ACCESS_LABELS[editDefaultAccess].detail}</p>
           </div>
           <Button onClick={handleUpdate} loading={editLoading} disabled={!editName.trim()}>Save Changes</Button>
+        </div>
+      </Modal>
+
+      <Modal open={deletingKb !== null} onClose={closeDelete} title="Delete Knowledge Base">
+        <div className="space-y-4">
+          <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink">
+            <p className="font-medium text-danger">This cannot be undone.</p>
+            {forcePurge ? (
+              <p className="mt-1 text-ink-light">
+                <span className="font-semibold text-danger">Force purge</span> permanently deletes
+                every article, category, tag, attachment, and import job in this knowledge base.
+              </p>
+            ) : (
+              <p className="mt-1 text-ink-light">
+                Deleting a knowledge base permanently removes its configuration. The knowledge base
+                must already be empty (no categories, tags, or in-flight imports). Use force purge
+                below to delete a non-empty knowledge base and all its contents.
+              </p>
+            )}
+          </div>
+          <label className="flex items-start gap-2 text-sm text-ink cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={forcePurge}
+              onChange={e => setForcePurge(e.target.checked)}
+              className="mt-0.5"
+              disabled={deleteLoading}
+            />
+            <span>
+              <span className="font-medium">Force purge contents</span>
+              <span className="block text-xs text-ink-muted">
+                Required if the knowledge base still has articles, categories, tags, or import history.
+              </span>
+            </span>
+          </label>
+          <div>
+            <label className="block text-sm text-ink mb-1">
+              To confirm, type <span className="font-semibold">{deletingKb?.name}</span> below.
+            </label>
+            <input
+              value={deleteConfirmInput}
+              onChange={e => setDeleteConfirmInput(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-md text-sm"
+              placeholder={deletingKb?.name ?? ''}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeDelete} disabled={deleteLoading}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={handleDeleteConfirmed}
+              loading={deleteLoading}
+              disabled={!canConfirmDelete}
+            >
+              {forcePurge ? 'Purge knowledge base' : 'Delete knowledge base'}
+            </Button>
+          </div>
         </div>
       </Modal>
     </>

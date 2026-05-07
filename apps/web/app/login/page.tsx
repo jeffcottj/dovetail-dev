@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { signIn } from '../../auth';
+import { sanitizeCallbackUrl } from '../../lib/callback-url';
 import { DEV_USERS, isDevAuthEnabled } from '../../lib/dev-auth';
 
 // Must be dynamic so OAUTH_PROVIDER is read at runtime, not build time
@@ -44,7 +45,12 @@ function GoogleLogo() {
   );
 }
 
-export default function LoginPage() {
+type LoginSearchParams = Promise<{ callbackUrl?: string | string[] }>;
+
+export default async function LoginPage({ searchParams }: { searchParams: LoginSearchParams }) {
+  const params = await searchParams;
+  const rawCallback = Array.isArray(params.callbackUrl) ? params.callbackUrl[0] : params.callbackUrl;
+  const callbackUrl = sanitizeCallbackUrl(rawCallback) ?? '/';
   const devAuthEnabled = isDevAuthEnabled();
 
   return (
@@ -80,6 +86,7 @@ export default function LoginPage() {
               {Object.entries(DEV_USERS).map(([key, user]) => (
                 <form key={key} action="/api/dev/login" method="POST">
                   <input type="hidden" name="user" value={key} />
+                  <input type="hidden" name="callbackUrl" value={callbackUrl} />
                   <button
                     type="submit"
                     className="w-full flex items-center justify-between gap-3 bg-accent hover:bg-accent-hover text-white font-[family-name:var(--font-ui)] font-medium py-2.5 px-4 rounded-md transition-colors cursor-pointer"
@@ -97,7 +104,7 @@ export default function LoginPage() {
             <form
               action={async () => {
                 'use server';
-                await signIn(providerId, { redirectTo: '/' });
+                await signIn(providerId, { redirectTo: callbackUrl });
               }}
             >
               <button
